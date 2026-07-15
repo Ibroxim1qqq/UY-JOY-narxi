@@ -18,4 +18,4 @@ RUN mkdir -p /app/logs
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -m uyjoy_etl.cli migrate && uvicorn uyjoy_etl.web_app:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "uvicorn uyjoy_etl.web_app:app --host 0.0.0.0 --port ${PORT:-8000}"]
