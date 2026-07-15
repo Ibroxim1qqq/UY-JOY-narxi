@@ -1,0 +1,125 @@
+UY-JOY NARXLARI ETL JARAYONI
+
+Maqsad:
+OLX.uz saytidan uy-joyga tegishli e'lonlarni olib, Postgres bazaga joylash. Hozircha cleaning qilinmaydi. Avval raw data to'liq saqlanadi, keyingi bosqichda tozalash, normalizatsiya va analytics qilinadi.
+
+1-BOSQICH: Source tekshirildi
+OLX.uz real estate sahifalari HTML ichida window.__PRERENDERED_STATE__ nomli JSON saqlaydi.
+Bu JSON ichida e'lon ID, title, description, price, location, params, photo URLlar, seller haqida public ma'lumotlar, createdTime, lastRefreshTime kabi maydonlar bor.
+Shuning uchun scraping HTML textni qo'pol kesish orqali emas, strukturali JSON orqali qilinadi.
+
+2-BOSQICH: Qonuniy va texnik chegara
+robots.txt tekshirildi. Contact, ajax, account, chat kabi yopiq yoki shaxsiy endpointlarga kirmaymiz.
+Hozirgi pipeline faqat public listing/detail sahifalarni o'qiydi.
+Telefon raqamlarni majburan ochmaymiz, chunki contact endpointlar robots.txtda yopiq.
+
+3-BOSQICH: Raw database modeli
+olx_listing_raw jadvalida e'lonning original listing JSONi va detail JSONi jsonb formatida saqlanadi.
+Yonida query qilish oson bo'lishi uchun olx_id, title, price_display, price_value, currency_code, city, district, region, created_time kabi ustunlar ham bor.
+Bu hali cleaning emas. Bu raw staged storage: source qanday bergan bo'lsa, shunday saqlab qo'yamiz.
+
+4-BOSQICH: Logging
+logs/etl.log faylida umumiy pipeline loglari yoziladi.
+Postgresdagi olx_fetch_logs jadvalida har bir HTTP request logi saqlanadi: URL, status code, vaqt, xato bo'lsa xato matni.
+etl_runs jadvali har bir ishga tushirilgan pipeline run holatini saqlaydi.
+
+5-BOSQICH: Keyingi ishlar
+Postgres paroli .env ichiga yozilgach migration ishlatiladi.
+Keyin kichik test scrape qilinadi.
+Hammasi to'g'ri tushgach max_pages oshiriladi va barcha kerakli kategoriyalar yig'iladi.
+Cleaning keyingi bosqichda boshlanadi: narx, valyuta, m2, sotik, xona soni, shahar/tuman nomlari standard formatga keltiriladi.
+
+6-BOSQICH: Parametrlarni raw saqlash
+OLX e'lonlarida m2, sotik, xona soni, qavat, uy turi kabi maydonlar params ro'yxatida keladi.
+raw_params ustuni OLX bergan ro'yxatni o'zgartirmasdan saqlaydi.
+param_values ustuni esa shu ro'yxatni key bo'yicha JSON map qiladi, masalan total_area yoki land_area kabi kalitlarni SQLda topish oson bo'ladi.
+Bu hali cleaning emas: value va normalizedValue OLX qanday bergan bo'lsa, shunday yoziladi.
+
+7-BOSQICH: OLX pagination cheklovi aniqlandi
+Masalan kvartira sotish kategoriyasida visibleElements 59 mingdan oshiq ko'rindi, lekin totalElements 1000 va totalPages 25 bo'ldi.
+Bu OLX category listingni pagination orqali 1000 ta atrofida cheklayotganini bildiradi.
+Shuning uchun barcha datani maksimal olish uchun keyingi bosqichda source URLlarni region, city, district va zarur bo'lsa narx intervallari bo'yicha bo'lib chiqamiz.
+Hozirgi scraper bitta source pathdan raw data olish va Postgresga saqlashni toza qilib tayyorlab beradi.
+
+8-BOSQICH: Lokal data ko'rish site
+FastAPI asosida kichik lokal dashboard qo'shildi.
+Site Postgresdagi olx_listing_raw jadvalidan o'qiydi, datani o'zgartirmaydi.
+Asosiy sahifada search, category filter, city filter, narx oralig'i va pagination bor.
+Detail sahifada bitta e'lonning asosiy maydonlari, raw params va raw JSON ko'rsatiladi.
+
+9-BOSQICH: Docker Postgres va pgAdmin sozlandi
+Lokal PostgreSQL 5432 portni band qilgani uchun Docker Postgres tashqi porti 55432 qilib qo'yildi.
+.env fayli Docker Postgresga qaraydi: 127.0.0.1:55432, database uyjoy_olx, user uyjoy.
+pgAdmin container http://127.0.0.1:5050 da ochiladi.
+setup_docker_and_scrape.ps1 script Docker stackni ko'taradi, migration qiladi va 1 sahifa sample data scrape qiladi.
+
+10-BOSQICH: Docker ishlamasa lokal Postgres fallback
+Docker Desktop WSL yo'qligi sabab ishga tushmasa, start_local_postgres.ps1 PostgreSQL 17 binarlari bilan loyiha ichida alohida Postgres cluster yaratadi.
+Bu cluster .postgres-data papkasida turadi va 127.0.0.1:55432 portda ishlaydi.
+setup_local_postgres_and_scrape.ps1 migration, sample scrape va dashboard restart ishlarini ketma-ket bajaradi.
+
+11-BOSQICH: Ko'p data olish uchun source discovery
+OLX bitta katta category URLni 1000 ta natija atrofida cap qiladi.
+Shuning uchun discover-sources category ichidagi region, city va district facet URLlarni topadi.
+scrape-discovered esa topilgan source URLlarning har biridan 25 sahifagacha olib, olx_id bo'yicha dedupe qilib Postgresga yozadi.
+
+12-BOSQICH: Priority source scrape
+scrape_priority_sources.ps1 eng katta source URLlarni qo'lda belgilangan ro'yxat orqali scrape qiladi.
+Bu tezda 10 minglab qator olish uchun ishlatiladi: Toshkent tumanlari va yirik shaharlar alohida source sifatida olinadi.
+
+13-BOSQICH: Ijara priority source scrape
+scrape_rent_priority_sources.ps1 uzoq muddatli ijara kvartiralardagi eng katta Toshkent tumanlarini alohida source sifatida scrape qiladi.
+Bu sotuv e'lonlariga qo'shimcha ravishda database hajmini 20 ming+ darajaga olib chiqish uchun ishlatiladi.
+
+14-BOSQICH: Dashboard filterlari kengaytirildi
+Dashboardga sotuv/ijara, tuman va xona soni filterlari qo'shildi.
+Sotuv/ijara OLX source_category_path qiymatidagi prodazha yoki arenda bo'yicha aniqlanadi.
+Xona soni param_values JSON ichidagi number_of_rooms.normalizedValue maydonidan o'qiladi.
+Bu bosqich ham raw datani o'zgartirmaydi, faqat Postgresdagi mavjud e'lonlarni aniqroq ko'rish uchun read-only query beradi.
+
+15-BOSQICH: Deploy tayyorgarligi
+Production uchun Dockerfile, docker-compose.prod.yml va .env.prod.example qo'shildi.
+Deploy arxitekturasi: FastAPI web app containeri, Postgres containeri va ixtiyoriy pgAdmin profile.
+Postgres va pgAdmin portlari production compose ichida faqat 127.0.0.1 ga bind qilinadi, internetga bevosita ochilmaydi.
+Domain ulash uchun docs/deployment.md ichida Nginx reverse proxy va SSL tartibi yozildi.
+
+16-BOSQICH: Bepul deploy yo'li
+docs/free-deployment.md ichida 0 so'mlik variantlar yozildi.
+Eng tez bepul yo'l: lokal dashboard va lokal Postgresni Cloudflare Quick Tunnel orqali public link qilish.
+scripts/start_free_tunnel.ps1 scripti Postgresni, dashboardni va tunnelni ketma-ket ishga tushiradi.
+scripts/start_free_tunnel_background.ps1 va stop_free_tunnel.ps1 tunnelni backgroundda boshqarish uchun qo'shildi.
+
+17-BOSQICH: 200-300k data uchun production tayyorgarlik
+sql/schema.sql ichiga deal_type va room_count generated columnlari qo'shildi.
+Dashboard filterlari endi source_category_path va JSON expressionni har safar hisoblamaydi, indexable deal_type va room_count ustunlaridan foydalanadi.
+Title, description, shahar, tuman, region va URL qidiruvi uchun pg_trgm GIN indekslari qo'shildi.
+docker-compose.prod.yml Postgres memory tuning, web healthcheck va dashboard basic auth bilan yangilandi.
+scripts/deploy_prod.sh, backup_prod.sh, restore_prod.sh va scrape_prod.sh serverdagi takroriy ishlarni aniq buyruqqa aylantiradi.
+
+18-BOSQICH: Contact row infrasi
+olx_listing_raw jadvaliga contact_phone, contact_name, contact_source, contact_raw va contact timestamp ustunlari qo'shildi.
+Agar ruxsatli OLX feed/listing payload ichida contact maydoni kelsa, parser uni avtomatik recordga qo'shadi.
+CSV/export orqali kelgan ruxsatli contactlar import-contacts commandi bilan olx_id yoki listing_url bo'yicha e'lon rowiga ulanadi.
+Dashboard list va detail sahifalarida e'lon yonida aloqa maydoni ko'rinadi.
+Kerakli ruxsat va texnik format docs/contact-data-requirements.md ichida yozildi.
+
+19-BOSQICH: Full public real-estate scrape
+scripts/scrape_all_public_sources.ps1 barcha real-estate kategoriyalarni source discovery orqali mayda source'larga bo'lib scrape qiladi.
+scripts/start_full_public_scrape_background.ps1 shu ishni backgroundda boshlaydi va progressni logs/full_public_scrape_progress.txt fayliga yozadi.
+Bu bosqich contact endpointlarga kirmaydi; faqat public listing/detail JSONda mavjud uy-joy e'lon datalarini yig'adi.
+
+20-BOSQICH: Real-estate category qamrovi kengaytirildi
+OLX nedvizhimost category daraxtida kvartira, uy, yer bilan birga almashuv, garaj/parking, tijorat joylari, hostel, hotel va sanatoriy leaf bo'limlari ham borligi tekshirildi.
+src/uyjoy_etl/category_catalog.py endi shu real-estate leaf pathlarning hammasini ro'yxatda saqlaydi.
+Dashboard category filterlari mayda city/district source pathlarni asosiy category labeliga guruhlaydi, masalan Toshkent tumanlari "Kvartira sotish" ostida chiqadi.
+deal_type generated ustuni sotuv, ijara va almashuvni ajratadi; sutkalik ijara ham dashboarddagi ijara filteriga kiradi.
+Bu o'zgarish ham contact endpointlarga tegmaydi, faqat public listing JSONdan olinadigan real-estate e'lonlarini kengroq yig'ish uchun qilindi.
+
+21-BOSQICH: Full scrape process boshqaruvi tozalandi
+Full public scrape logikasi PowerShell ichidagi inline Python koddan src/uyjoy_etl/full_public_scrape.py moduliga chiqarildi.
+Endi process command line aniq ko'rinadi: uyjoy_etl.full_public_scrape.
+scripts/stop_full_public_scrape.ps1 parent va child processlarni recursive to'xtatadi, shuning uchun eski Python child processlari osilib qolib loglarni aralashtirmaydi.
+
+22-BOSQICH: Full scrape status tekshiruvi
+scripts/full_public_scrape_status.ps1 bitta buyruq bilan full scrape process holati, progress tail, database summary, category group countlari va oxirgi etl_runs yozuvlarini ko'rsatadi.
+Bu uzoq scraping jarayonini qo'lda ko'p SQL yozmasdan kuzatish uchun qo'shildi.

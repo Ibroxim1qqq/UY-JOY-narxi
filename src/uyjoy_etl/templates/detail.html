@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ listing.title or "E'lon" }} | UY-JOY</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">OLX raw ETL</p>
+      <h1>{{ listing.title or "Nomsiz e'lon" }}</h1>
+      <p class="source-note">Manba: OLX.uz</p>
+    </div>
+    <a class="ghost-link" href="/">Ortga</a>
+  </header>
+
+  <main class="page-shell detail-grid">
+    <section class="detail-main">
+      <div class="detail-row">
+        <span>Narx</span>
+        <strong>{{ listing.price_display or "-" }}</strong>
+      </div>
+      <div class="detail-row">
+        <span>Kategoriya</span>
+        <strong>{{ listing.category_label }}</strong>
+      </div>
+      <div class="detail-row">
+        <span>Maydon</span>
+        <strong>{{ listing.area_display or "-" }}</strong>
+      </div>
+      <div class="detail-row">
+        <span>Joylashuv</span>
+        <strong>{{ listing.location_path or listing.city_name or "-" }}</strong>
+      </div>
+      <div class="detail-row">
+        <span>Manba</span>
+        <strong>OLX.uz</strong>
+      </div>
+      <div class="detail-row">
+        <span>Aloqa</span>
+        <strong><a class="inline-action" href="{{ listing.listing_url }}" target="_blank" rel="noreferrer">OLXda aloqa qilish</a></strong>
+      </div>
+      <div class="detail-row">
+        <span>Joylangan sana</span>
+        <strong>{{ listing.created_time or "-" }}</strong>
+      </div>
+      <div class="description-block">
+        <h2>Description</h2>
+        <p>{{ listing.description or "-" }}</p>
+      </div>
+      <div class="link-actions">
+        <a class="primary-button" href="{{ listing.listing_url }}" target="_blank" rel="noreferrer">OLXda ochish</a>
+        <a class="secondary-button" href="{{ listing.listing_url }}" target="_blank" rel="noreferrer">OLXda aloqa qilish</a>
+      </div>
+    </section>
+
+    <aside class="detail-side">
+      <h2>Raw params</h2>
+      <dl>
+        {% for param in listing.raw_params %}
+          <div>
+            <dt>{{ param.name or param.key }}</dt>
+            <dd>{{ param.value or param.normalizedValue }}</dd>
+          </div>
+        {% endfor %}
+      </dl>
+    </aside>
+
+    <section class="raw-json">
+      <h2>Raw JSON</h2>
+      <pre>{{ listing.raw_payload_pretty }}</pre>
+    </section>
+  </main>
+</body>
+</html>

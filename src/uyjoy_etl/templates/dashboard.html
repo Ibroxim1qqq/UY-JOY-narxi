@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UY-JOY OLX Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">OLX raw ETL</p>
+      <h1>Uy-joy e'lonlari</h1>
+      <p class="source-note">Manba: OLX.uz</p>
+    </div>
+    <a class="ghost-link" href="/">Yangilash</a>
+  </header>
+
+  {% if error_message %}
+    <section class="notice">
+      <strong>Hozir data ko'rinmayapti.</strong>
+      <span>{{ error_message }}</span>
+    </section>
+  {% endif %}
+
+  <main class="page-shell">
+    <section class="summary-grid" aria-label="Umumiy statistika">
+      <div class="metric">
+        <span>Jami</span>
+        <strong>{{ stats.total_listings or 0 }}</strong>
+      </div>
+      <div class="metric">
+        <span>Kategoriya</span>
+        <strong>{{ stats.categories_count or 0 }}</strong>
+      </div>
+      <div class="metric">
+        <span>Shahar</span>
+        <strong>{{ stats.cities_count or 0 }}</strong>
+      </div>
+      <div class="metric">
+        <span>Oxirgi ko'rilgan</span>
+        <strong class="metric-date">{{ stats.last_seen_at or "-" }}</strong>
+      </div>
+    </section>
+
+    <section class="toolbar" aria-label="Qidiruv">
+      <form method="get" class="search-form">
+        <label>
+          <span>Qidiruv</span>
+          <input name="q" value="{{ filters.q }}" placeholder="title, tuman, shahar, link">
+        </label>
+        <label>
+          <span>Turi</span>
+          <select name="deal_type">
+            <option value="">Hammasi</option>
+            {% for deal_type in facets.deal_types %}
+              <option value="{{ deal_type.value }}" {% if filters.deal_type == deal_type.value %}selected{% endif %}>
+                {{ deal_type.label }} ({{ deal_type.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Shahar</span>
+          <select name="city">
+            <option value="">Hammasi</option>
+            {% for city in facets.cities %}
+              <option value="{{ city.value }}" {% if filters.city == city.value %}selected{% endif %}>
+                {{ city.value }} ({{ city.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Tuman</span>
+          <select name="district">
+            <option value="">Hammasi</option>
+            {% for district in facets.districts %}
+              <option value="{{ district.value }}" {% if filters.district == district.value %}selected{% endif %}>
+                {{ district.value }} ({{ district.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Xona</span>
+          <select name="rooms">
+            <option value="">Hammasi</option>
+            {% for room in facets.rooms %}
+              <option value="{{ room.value }}" {% if filters.rooms == room.value %}selected{% endif %}>
+                {{ room.label }} xona ({{ room.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Kategoriya</span>
+          <select name="category">
+            <option value="">Hammasi</option>
+            {% for category in facets.categories %}
+              <option value="{{ category.value }}" {% if filters.category == category.value %}selected{% endif %}>
+                {{ category.label }} ({{ category.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Min narx</span>
+          <input name="price_min" value="{{ filters.price_min }}" inputmode="decimal">
+        </label>
+        <label>
+          <span>Max narx</span>
+          <input name="price_max" value="{{ filters.price_max }}" inputmode="decimal">
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="primary-button">Qidirish</button>
+          <a class="secondary-button" href="/">Tozalash</a>
+        </div>
+      </form>
+    </section>
+
+    <section class="table-section" aria-label="E'lonlar jadvali">
+      <div class="table-header">
+        <div>
+          <h2>E'lonlar</h2>
+          {% if result %}
+            <span>{{ result.total }} ta natija</span>
+          {% else %}
+            <span>0 ta natija</span>
+          {% endif %}
+        </div>
+        {% if result %}
+          <div class="pager">
+            {% if prev_url %}
+              <a href="{{ prev_url }}">Oldingi</a>
+            {% endif %}
+            <span>{{ result.page }} / {{ result.total_pages }}</span>
+            {% if next_url %}
+              <a href="{{ next_url }}">Keyingi</a>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>E'lon</th>
+              <th>Kategoriya</th>
+              <th>Xona</th>
+              <th>Aloqa</th>
+              <th>Manba</th>
+              <th>Narx</th>
+              <th>Maydon</th>
+              <th>Joylashuv</th>
+              <th>Sana</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if result and result.listings %}
+              {% for item in result.listings %}
+                <tr>
+                  <td class="title-cell">
+                    <a href="/listing/{{ item.olx_id }}">{{ item.title or "Nomsiz e'lon" }}</a>
+                    <span>{{ item.short_description }}</span>
+                  </td>
+                  <td>{{ item.category_label }}</td>
+                  <td>{{ item.rooms_display or "-" }}</td>
+                  <td class="contact-cell">
+                    <a class="table-action" href="{{ item.listing_url }}" target="_blank" rel="noreferrer">OLXda aloqa</a>
+                  </td>
+                  <td><span class="source-pill">OLX.uz</span></td>
+                  <td class="price-cell">{{ item.price_display or "-" }}</td>
+                  <td>{{ item.area_display or "-" }}</td>
+                  <td>{{ item.region_name or "" }}{% if item.city_name %}, {{ item.city_name }}{% endif %}{% if item.district_name %}, {{ item.district_name }}{% endif %}</td>
+                  <td>{{ item.created_time or item.last_refresh_time or "-" }}</td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="9" class="empty-cell">Hali e'lonlar topilmadi.</td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

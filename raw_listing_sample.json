@@ -1,0 +1,265 @@
+{
+  "id": 65248556,
+  "map": {
+    "lat": 41.48515265,
+    "lon": 69.58603475,
+    "zoom": 12,
+    "radius": 9,
+    "show_detailed": false
+  },
+  "url": "https://www.olx.uz/d/obyavlenie/srochno-prodaetsya-1komnatnaya-kvartira-detskaya-bolnitsa-ID4pM84.html",
+  "shop": {
+    "subdomain": null
+  },
+  "user": {
+    "id": 329925420,
+    "logo": null,
+    "name": "taylakovasayyora62",
+    "uuid": "fbbbd8c6-e506-411a-b6d4-2954299d8525",
+    "about": "",
+    "photo": null,
+    "created": "2024-03-14T21:57:21+05:00",
+    "isOnline": false,
+    "lastSeen": "2026-07-05T15:40:04+05:00",
+    "sellerType": null,
+    "company_name": "",
+    "logo_ad_page": null,
+    "otherAdsEnabled": true,
+    "bannerDesktopURL": "",
+    "socialNetworkAccountType": null
+  },
+  "isJob": false,
+  "price": {
+    "free": false,
+    "budget": false,
+    "exchange": false,
+    "displayValue": "285 329 950 сум",
+    "regularPrice": {
+      "value": 285329950,
+      "negotiable": false,
+      "currencyCode": "UZS",
+      "currencySymbol": "сум",
+      "priceFormatConfig": {
+        "decimalSeparator": ".",
+        "thousandsSeparator": " "
+      }
+    }
+  },
+  "title": "Срочно продаётся 1комнатная квартира детская больница",
+  "params": [
+    {
+      "key": "type_of_market",
+      "name": "Тип жилья",
+      "type": "select",
+      "value": "Вторичный рынок",
+      "normalizedValue": "secondary"
+    },
+    {
+      "key": "number_of_rooms",
+      "name": "Количество комнат",
+      "type": "input",
+      "value": "1 ",
+      "normalizedValue": "1"
+    },
+    {
+      "key": "total_living_area",
+      "name": "Жилая площадь",
+      "type": "input",
+      "value": "30 м²",
+      "normalizedValue": "30"
+    },
+    {
+      "key": "total_area",
+      "name": "Общая площадь",
+      "type": "input",
+      "value": "30",
+      "normalizedValue": "30"
+    },
+    {
+      "key": "kitchen_area",
+      "name": "Площадь кухни",
+      "type": "input",
+      "value": "2.20 м²",
+      "normalizedValue": "2.2"
+    },
+    {
+      "key": "floor",
+      "name": "Этаж",
+      "type": "input",
+      "value": "2 ",
+      "normalizedValue": "2"
+    },
+    {
+      "key": "total_floors",
+      "name": "Этажность дома",
+      "type": "input",
+      "value": "5 ",
+      "normalizedValue": "5"
+    },
+    {
+      "key": "house_type",
+      "name": "Тип строения",
+      "type": "select",
+      "value": "Кирпичный",
+      "normalizedValue": "0"
+    },
+    {
+      "key": "layout",
+      "name": "Планировка",
+      "type": "select",
+      "value": "Смежно-раздельная",
+      "normalizedValue": "3"
+    },
+    {
+      "key": "year_of_construction_sale",
+      "name": "Год постройки/сдачи",
+      "type": "select",
+      "value": "1960 - 1979",
+      "normalizedValue": "1960"
+    },
+    {
+      "key": "wc",
+      "name": "Санузел",
+      "type": "select",
+      "value": "Совмещенный",
+      "normalizedValue": "2"
+    },
+    {
+      "key": "furnished",
+      "name": "Меблирована",
+      "type": "select",
+      "value": "Нет",
+      "normalizedValue": "no"
+    },
+    {
+      "key": "ceiling_height",
+      "name": "Высота потолков",
+      "type": "input",
+      "value": "2.60",
+      "normalizedValue": "2.6"
+    },
+    {
+      "key": "more",
+      "name": "В квартире есть",
+      "type": "checkboxes",
+      "value": "Интернет, Кухня, Балкон",
+      "normalizedValue": [
+        "1",
+        "8",
+        "9"
+      ]
+    },
+    {
+      "key": "near_is",
+      "name": "Рядом есть",
+      "type": "checkboxes",
+      "value": "Больница, поликлиника, Детская площадка, Детский сад, Остановки, Парк, зелёная зона, Развлекательные заведения, Рестораны, кафе, Стоянка, Супермаркет, магазины, Школа",
+      "normalizedValue": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10"
+      ]
+    },
+    {
+      "key": "repairs",
+      "name": "Ремонт",
+      "type": "select",
+      "value": "Средний",
+      "normalizedValue": "3"
+    },
+    {
+      "key": "comission",
+      "name": "Комиссионные",
+      "type": "select",
+      "value": "Нет",
+      "normalizedValue": "no"
+    }
+  ],
+  "photos": [
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/8os1p684z0n33-UZ/image;s=960x1280",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/5uvq9proygw1-UZ/image;s=1280x960",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/s3bqk2hk7ngk-UZ/image;s=1280x960",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/ti5wdrur8v523-UZ/image;s=1280x960",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/c25gz1wy2pfh1-UZ/image;s=960x1280",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/dzbtcbb1ak6i2-UZ/image;s=1280x960",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/8t9oc9kr9n9d3-UZ/image;s=1280x960"
+  ],
+  "salary": null,
+  "status": "active",
+  "contact": {
+    "chat": true,
+    "name": "taylakovasayyora62",
+    "phone": true,
+    "courier": false,
+    "negotiation": true
+  },
+  "partner": {
+    "code": ""
+  },
+  "urlPath": "/d/obyavlenie/srochno-prodaetsya-1komnatnaya-kvartira-detskaya-bolnitsa-ID4pM84.html",
+  "category": {
+    "id": 13,
+    "type": "real_estate"
+  },
+  "delivery": {
+    "rock": {
+      "mode": null,
+      "active": false,
+      "offer_id": null
+    }
+  },
+  "isActive": true,
+  "location": {
+    "cityId": 90,
+    "cityName": "Чирчик",
+    "pathName": "Ташкентская область, Чирчик",
+    "regionId": 5,
+    "districtId": 0,
+    "regionName": "Ташкентская область",
+    "districtName": null,
+    "cityNormalizedName": "chirchik",
+    "regionNormalizedName": "toshkent-oblast"
+  },
+  "safedeal": {
+    "status": "unactive",
+    "weight": 0,
+    "weight_grams": 0,
+    "allowed_quantity": [],
+    "safedeal_blocked": false
+  },
+  "photosSet": [
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/8os1p684z0n33-UZ/image;s=389x272 1x,https://frankfurt.apollo.olxcdn.com:443/v1/files/8os1p684z0n33-UZ/image;s=516x361 2x,https://frankfurt.apollo.olxcdn.com:443/v1/files/8os1p684z0n33-UZ/image;s=1000x700 3x",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/5uvq9proygw1-UZ/image;s=389x272 1x,https://frankfurt.apollo.olxcdn.com:443/v1/files/5uvq9proygw1-UZ/image;s=516x361 2x,https://frankfurt.apollo.olxcdn.com:443/v1/files/5uvq9proygw1-UZ/image;s=1000x700 3x",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/s3bqk2hk7ngk-UZ/image;s=389x272 1x,https://frankfurt.apollo.olxcdn.com:443/v1/files/s3bqk2hk7ngk-UZ/image;s=516x361 2x,https://frankfurt.apollo.olxcdn.com:443/v1/files/s3bqk2hk7ngk-UZ/image;s=1000x700 3x",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/ti5wdrur8v523-UZ/image;s=389x272 1x,https://frankfurt.apollo.olxcdn.com:443/v1/files/ti5wdrur8v523-UZ/image;s=516x361 2x,https://frankfurt.apollo.olxcdn.com:443/v1/files/ti5wdrur8v523-UZ/image;s=1000x700 3x",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/c25gz1wy2pfh1-UZ/image;s=389x272 1x,https://frankfurt.apollo.olxcdn.com:443/v1/files/c25gz1wy2pfh1-UZ/image;s=516x361 2x,https://frankfurt.apollo.olxcdn.com:443/v1/files/c25gz1wy2pfh1-UZ/image;s=1000x700 3x",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/dzbtcbb1ak6i2-UZ/image;s=389x272 1x,https://frankfurt.apollo.olxcdn.com:443/v1/files/dzbtcbb1ak6i2-UZ/image;s=516x361 2x,https://frankfurt.apollo.olxcdn.com:443/v1/files/dzbtcbb1ak6i2-UZ/image;s=1000x700 3x",
+    "https://frankfurt.apollo.olxcdn.com:443/v1/files/8t9oc9kr9n9d3-UZ/image;s=389x272 1x,https://frankfurt.apollo.olxcdn.com:443/v1/files/8t9oc9kr9n9d3-UZ/image;s=516x361 2x,https://frankfurt.apollo.olxcdn.com:443/v1/files/8t9oc9kr9n9d3-UZ/image;s=1000x700 3x"
+  ],
+  "promotion": {
+    "top_ad": false,
+    "urgent": false,
+    "options": [],
+    "b2c_ad_page": false,
+    "highlighted": false,
+    "premium_ad_page": false
+  },
+  "isBusiness": true,
+  "isPromoted": false,
+  "createdTime": "2026-07-05T15:40:04+05:00",
+  "description": "Срочно продаётся 1комнатная квартира кирпичном доме",
+  "validToTime": "2026-08-04T15:40:36+05:00",
+  "searchReason": "organic",
+  "isHighlighted": false,
+  "itemCondition": "",
+  "isGpsrAvailable": false,
+  "lastRefreshTime": "2026-07-05T15:42:54+05:00",
+  "isNewFavouriteAd": false
+}

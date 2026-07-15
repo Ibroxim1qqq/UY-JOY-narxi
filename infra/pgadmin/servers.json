@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "UY-JOY Docker Postgres",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "uyjoy_olx",
+      "Username": "uyjoy",
+      "SSLMode": "prefer"
+    }
+  }
+}

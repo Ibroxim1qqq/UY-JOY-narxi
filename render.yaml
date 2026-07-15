@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: uyjoy-dashboard
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: pip install -e .
+    preDeployCommand: python -m uyjoy_etl.cli migrate-cloud
+    startCommand: python -m uvicorn uyjoy_etl.web_app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: DASHBOARD_USERNAME
+        value: admin
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: OLX_BASE_URL
+        value: https://www.olx.uz
+      - key: OLX_REQUEST_TIMEOUT_SECONDS
+        value: "30"
+      - key: OLX_REQUEST_DELAY_SECONDS
+        value: "1.5"
+      - key: OLX_MAX_RETRIES
+        value: "3"
+      - key: OLX_MAX_PAGES_PER_CATEGORY
+        value: "1"
+      - key: OLX_FETCH_DETAILS
+        value: "false"

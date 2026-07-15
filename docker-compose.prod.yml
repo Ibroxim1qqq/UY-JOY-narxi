@@ -1,0 +1,92 @@
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    shm_size: "512mb"
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=60"
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "effective_cache_size=2GB"
+      - "-c"
+      - "maintenance_work_mem=256MB"
+      - "-c"
+      - "work_mem=16MB"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "wal_compression=on"
+      - "-c"
+      - "checkpoint_timeout=15min"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - uyjoy_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  web:
+    build: .
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+      OLX_BASE_URL: ${OLX_BASE_URL}
+      OLX_USER_AGENT: ${OLX_USER_AGENT}
+      OLX_REQUEST_TIMEOUT_SECONDS: ${OLX_REQUEST_TIMEOUT_SECONDS}
+      OLX_REQUEST_DELAY_SECONDS: ${OLX_REQUEST_DELAY_SECONDS}
+      OLX_MAX_RETRIES: ${OLX_MAX_RETRIES}
+      OLX_CATEGORY_PATHS: ${OLX_CATEGORY_PATHS}
+      OLX_MAX_PAGES_PER_CATEGORY: ${OLX_MAX_PAGES_PER_CATEGORY}
+      OLX_FETCH_DETAILS: ${OLX_FETCH_DETAILS}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - uyjoy_logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    restart: unless-stopped
+    profiles: ["admin"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "127.0.0.1:5050:80"
+    volumes:
+      - ./infra/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  uyjoy_postgres_data:
+  uyjoy_logs:
