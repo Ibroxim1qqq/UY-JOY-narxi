@@ -150,9 +150,16 @@ def listing_detail(
 
 
 @app.get("/health")
-def health() -> dict[str, str]:
-    database.ping()
-    return {"status": "ok"}
+def health() -> dict[str, object]:
+    ping = database.ping()
+    stats = repository.get_stats()
+    return {
+        "status": "ok",
+        "database": ping["database"],
+        "database_host": config.database.host,
+        "database_user": ping["user"],
+        "total_listings": stats.get("total_listings", 0),
+    }
 
 
 @app.get("/api/powerbi/listings.csv")
