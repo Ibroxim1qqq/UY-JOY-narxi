@@ -16,7 +16,7 @@ Repo ichida `render.yaml` bor:
 
 - `uyjoy-dashboard`: FastAPI web service
 - `DATABASE_URL`: Neon Postgres connection string
-- `preDeployCommand`: yengil cloud schema migrationni ishlatadi
+- Free Render web service ishlashi uchun migration deploydan oldin lokal script bilan Neon'ga qo'llanadi.
 
 ## 2. Neon database yaratish
 
