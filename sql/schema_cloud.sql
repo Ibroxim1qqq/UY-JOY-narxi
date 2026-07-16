@@ -74,6 +74,9 @@ create table if not exists olx_listing_raw (
     raw_listing jsonb not null default '{}'::jsonb,
     raw_detail jsonb,
     content_hash text not null default '',
+    quality_status text not null default 'ok',
+    quality_reasons jsonb not null default '[]'::jsonb,
+    quality_checked_at timestamptz,
     listing_code text generated always as ('UYS-' || lpad(olx_id::text, 10, '0')) stored,
 
     first_seen_at timestamptz not null default now(),
@@ -99,6 +102,10 @@ create table if not exists olx_listing_raw (
     phone_number text
 );
 
+alter table olx_listing_raw add column if not exists quality_status text not null default 'ok';
+alter table olx_listing_raw add column if not exists quality_reasons jsonb not null default '[]'::jsonb;
+alter table olx_listing_raw add column if not exists quality_checked_at timestamptz;
+
 create index if not exists idx_olx_listing_raw_category on olx_listing_raw(source_category_path);
 create index if not exists idx_olx_listing_raw_city on olx_listing_raw(city_name);
 create index if not exists idx_olx_listing_raw_district on olx_listing_raw(district_name);
@@ -106,6 +113,7 @@ create index if not exists idx_olx_listing_raw_region on olx_listing_raw(region_
 create index if not exists idx_olx_listing_raw_deal_type on olx_listing_raw(deal_type);
 create index if not exists idx_olx_listing_raw_room_count on olx_listing_raw(room_count);
 create index if not exists idx_olx_listing_raw_price_value on olx_listing_raw(price_value);
+create index if not exists idx_olx_listing_raw_quality_status on olx_listing_raw(quality_status);
 create unique index if not exists idx_olx_listing_raw_listing_code on olx_listing_raw(listing_code);
 create index if not exists idx_olx_listing_raw_recent_sort on olx_listing_raw(
     coalesce(last_refresh_time, created_time, last_seen_at) desc
@@ -170,6 +178,9 @@ create table if not exists telegram_real_estate_posts (
     property_type text,
     deal_type text,
     address text,
+    city_name text,
+    district_name text,
+    neighborhood text,
     landmark text,
     price_display text,
     price_value numeric,
@@ -185,10 +196,20 @@ create table if not exists telegram_real_estate_posts (
     forwards integer,
     replies_count integer,
     has_contact_phone boolean not null default false,
+    quality_status text not null default 'ok',
+    quality_reasons jsonb not null default '[]'::jsonb,
+    quality_checked_at timestamptz,
     extraction_raw jsonb not null default '{}'::jsonb,
     updated_at timestamptz not null default now(),
     unique (channel_id, message_id)
 );
+
+alter table telegram_real_estate_posts add column if not exists city_name text;
+alter table telegram_real_estate_posts add column if not exists district_name text;
+alter table telegram_real_estate_posts add column if not exists neighborhood text;
+alter table telegram_real_estate_posts add column if not exists quality_status text not null default 'ok';
+alter table telegram_real_estate_posts add column if not exists quality_reasons jsonb not null default '[]'::jsonb;
+alter table telegram_real_estate_posts add column if not exists quality_checked_at timestamptz;
 
 create index if not exists idx_tg_re_posts_channel on telegram_real_estate_posts(channel_id);
 create index if not exists idx_tg_re_posts_property_type on telegram_real_estate_posts(property_type);
@@ -197,5 +218,47 @@ create index if not exists idx_tg_re_posts_price on telegram_real_estate_posts(p
 create index if not exists idx_tg_re_posts_rooms on telegram_real_estate_posts(room_count);
 create index if not exists idx_tg_re_posts_area on telegram_real_estate_posts(area_m2);
 create index if not exists idx_tg_re_posts_land on telegram_real_estate_posts(land_sotix);
+create index if not exists idx_tg_re_posts_quality_status on telegram_real_estate_posts(quality_status);
+create index if not exists idx_tg_re_posts_city on telegram_real_estate_posts(city_name);
+create index if not exists idx_tg_re_posts_district on telegram_real_estate_posts(district_name);
 create index if not exists idx_tg_re_posts_address_trgm on telegram_real_estate_posts using gin(address gin_trgm_ops);
+create index if not exists idx_tg_re_posts_neighborhood_trgm on telegram_real_estate_posts using gin(neighborhood gin_trgm_ops);
 create index if not exists idx_tg_re_posts_text_trgm on telegram_real_estate_posts using gin(source_text gin_trgm_ops);
+
+drop view if exists telegram_real_estate_flat;
+
+create or replace view telegram_real_estate_flat as
+select
+    id,
+    channel_username as kanal,
+    channel_title as kanal_nomi,
+    post_url as post_ssilka,
+    posted_at as joylangan_vaqt,
+    property_type as uy_turi,
+    deal_type as savdo_turi,
+    address as adress,
+    city_name as shahar,
+    district_name as tuman,
+    neighborhood as mahalla,
+    landmark as moljal,
+    price_display as narx_matn,
+    price_value as narx,
+    price_currency as valyuta,
+    room_count as xona_soni,
+    floor_number as qavat,
+    total_floors as jami_qavat,
+    area_m2 as maydon_m2,
+    land_sotix as yer_sotix,
+    repair_state as remont,
+    is_sold as sotilganmi,
+    has_media as rasmi_bormi,
+    views as korishlar_soni,
+    forwards as ulashishlar_soni,
+    replies_count as javoblar_soni,
+    has_contact_phone as kontakt_bormi,
+    quality_status,
+    quality_reasons,
+    quality_checked_at,
+    source_text as asl_matn,
+    updated_at as yangilangan_vaqt
+from telegram_real_estate_posts;

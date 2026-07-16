@@ -16,6 +16,7 @@ DEAL_TYPE_FILTERS = {
     "rent": {"label": "Ijara"},
     "exchange": {"label": "Almashuv"},
 }
+VISIBLE_QUALITY_CLAUSE = "(quality_status is null or quality_status = 'ok')"
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,7 @@ class ListingRepository:
                 """
                 select source_category_path as value, count(*) as count
                 from olx_listing_raw
+                where (quality_status is null or quality_status = 'ok')
                 group by source_category_path
                 order by count(*) desc, source_category_path
                 """
@@ -143,6 +145,7 @@ class ListingRepository:
                 select city_name as value, count(*) as count
                 from olx_listing_raw
                 where city_name is not null and city_name <> ''
+                  and (quality_status is null or quality_status = 'ok')
                 group by city_name
                 order by count(*) desc, city_name
                 limit 100
@@ -153,6 +156,7 @@ class ListingRepository:
                 select district_name as value, count(*) as count
                 from olx_listing_raw
                 where district_name is not null and district_name <> ''
+                  and (quality_status is null or quality_status = 'ok')
                 group by district_name
                 order by count(*) desc, district_name
                 limit 200
@@ -166,6 +170,7 @@ class ListingRepository:
                         case when room_count >= 7 then 7 else room_count end as sort_order
                     from olx_listing_raw
                     where room_count is not null
+                      and (quality_status is null or quality_status = 'ok')
                 )
                 select value, count(*) as count
                 from normalized_rooms
@@ -180,6 +185,7 @@ class ListingRepository:
                     count(*) filter (where deal_type = 'rent') as rent,
                     count(*) filter (where deal_type = 'exchange') as exchange
                 from olx_listing_raw
+                where (quality_status is null or quality_status = 'ok')
                 """
             ).fetchone()
 
@@ -228,6 +234,7 @@ class ListingRepository:
                     count(distinct city_name) filter (where city_name is not null) as cities_count,
                     max(last_seen_at) as last_seen_at
                 from olx_listing_raw
+                where (quality_status is null or quality_status = 'ok')
                 """
             ).fetchone()
 
@@ -263,6 +270,7 @@ class ListingRepository:
                     last_refresh_time,
                     last_seen_at
                 from olx_listing_raw
+                where (quality_status is null or quality_status = 'ok')
                 order by coalesce(last_refresh_time, created_time, last_seen_at) desc nulls last
                 """
             ).fetchall()
@@ -275,7 +283,7 @@ class ListingRepository:
         return result
 
     def _build_where_clause(self, filters: ListingFilters) -> tuple[str, dict[str, Any]]:
-        clauses: list[str] = []
+        clauses: list[str] = [VISIBLE_QUALITY_CLAUSE]
         params: dict[str, Any] = {}
 
         if filters.q:
@@ -330,8 +338,6 @@ class ListingRepository:
             params["price_max"] = filters.price_max
             clauses.append("price_value <= %(price_max)s")
 
-        if not clauses:
-            return "", params
         return "where " + " and ".join(clauses), params
 
     def _format_listing_row(self, row: dict[str, Any]) -> dict[str, Any]:

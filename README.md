@@ -46,6 +46,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\scrape_rent_priority_sources.
 
 Bu scriptlar katta sotuv va ijara source URLlardan 25 sahifagacha olib, `olx_id` bo'yicha duplicate'larni update qiladi.
 
+Har kuni avtomatik yangilash uchun:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\install_daily_update_task.ps1 -At 10:00
+```
+
+Batafsil: `docs/daily-automation.md`.
+
 1. Virtual environment yarating:
 
 ```powershell

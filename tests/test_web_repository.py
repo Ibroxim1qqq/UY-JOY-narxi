@@ -28,6 +28,7 @@ class WebRepositoryTest(unittest.TestCase):
         )
 
         self.assertIn("deal_type = %(deal_type)s", where_sql)
+        self.assertIn("quality_status", where_sql)
         self.assertIn("district_name = %(district)s", where_sql)
         self.assertIn("room_count = %(rooms)s", where_sql)
         self.assertEqual(params["deal_type"], "sale")
@@ -40,7 +41,16 @@ class WebRepositoryTest(unittest.TestCase):
         where_sql, params = repository._build_where_clause(ListingFilters(rooms="7plus"))
 
         self.assertIn("room_count >= 7", where_sql)
+        self.assertIn("quality_status", where_sql)
         self.assertNotIn("rooms", params)
+
+    def test_build_where_clause_hides_suspicious_by_default(self) -> None:
+        repository = ListingRepository(database=None)  # type: ignore[arg-type]
+
+        where_sql, params = repository._build_where_clause(ListingFilters())
+
+        self.assertIn("quality_status", where_sql)
+        self.assertEqual(params, {})
 
     def test_build_where_clause_filters_category_prefix(self) -> None:
         repository = ListingRepository(database=None)  # type: ignore[arg-type]

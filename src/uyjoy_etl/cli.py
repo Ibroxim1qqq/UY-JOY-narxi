@@ -7,8 +7,10 @@ from pathlib import Path
 
 from uyjoy_etl.category_catalog import category_by_path
 from uyjoy_etl.cloud_export import export_cloud_csv, import_cloud_csv
+from uyjoy_etl.cloud_sync import sync_cloud_database
 from uyjoy_etl.config import load_config
 from uyjoy_etl.contact_import import import_contacts_csv
+from uyjoy_etl.data_quality import SUSPICIOUS_CASES, mark_suspicious_records
 from uyjoy_etl.db import Database, mask_secret
 from uyjoy_etl.logging_config import configure_logging
 from uyjoy_etl.pipeline import OlxRawPipeline
@@ -31,6 +33,14 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "clean-telegram-real-estate",
         help="Telegram raw postlardan real-estate clean fields chiqaradi",
+    )
+    subparsers.add_parser(
+        "mark-suspicious",
+        help="Noreal/shubhali e'lonlarni quality_status bilan belgilaydi",
+    )
+    subparsers.add_parser(
+        "quality-cases",
+        help="Noreal e'lon deb belgilanadigan case misollarini chiqaradi",
     )
 
     telegram_parser = subparsers.add_parser(
@@ -58,6 +68,28 @@ def build_parser() -> argparse.ArgumentParser:
         "csv_path",
         nargs="?",
         default="backups/uyjoy-cloud-listings.csv",
+    )
+
+    sync_cloud_parser = subparsers.add_parser(
+        "sync-cloud",
+        help="Lokal OLX va Telegram datani cloud Postgresga sync qiladi",
+    )
+    sync_cloud_parser.add_argument("database_url", help="Cloud Postgres DATABASE_URL")
+    sync_cloud_parser.add_argument(
+        "--csv-path",
+        default="backups/uyjoy-cloud-listings.csv",
+        help="Vaqtinchalik OLX warehouse CSV yo'li",
+    )
+    sync_cloud_parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Cloud OLX jadvalini to'liq truncate/import qiladi",
+    )
+    sync_cloud_parser.add_argument(
+        "--olx-updated-since-days",
+        type=int,
+        default=3,
+        help="Full bo'lmasa, oxirgi nechta kundagi OLX qatorlari sync qilinadi",
     )
 
     inspect_parser = subparsers.add_parser(
@@ -147,6 +179,22 @@ def main(argv: list[str] | None = None) -> int:
         print(f"imported_rows={total}")
         return 0
 
+    if args.command == "sync-cloud":
+        csv_path = Path(args.csv_path)
+        if not csv_path.is_absolute():
+            csv_path = config.root_dir / csv_path
+        summary = sync_cloud_database(
+            local_database=database,
+            cloud_database_url=args.database_url,
+            schema_path=config.root_dir / "sql" / "schema_cloud.sql",
+            csv_path=csv_path,
+            full_sync=args.full,
+            olx_updated_since_days=args.olx_updated_since_days,
+        )
+        for key, value in summary.items():
+            print(f"{key}={value}")
+        return 0
+
     if args.command == "ping-db":
         row = database.ping()
         logger.info(
@@ -192,6 +240,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "clean-telegram-real-estate":
         summary = clean_telegram_real_estate(database)
         print(f"rows_seen={summary.rows_seen} rows_upserted={summary.rows_upserted}")
+        return 0
+
+    if args.command == "mark-suspicious":
+        summary = mark_suspicious_records(database)
+        print(f"olx_total={summary.olx_total} olx_suspicious={summary.olx_suspicious}")
+        print(
+            f"telegram_total={summary.telegram_total} "
+            f"telegram_suspicious={summary.telegram_suspicious}"
+        )
+        return 0
+
+    if args.command == "quality-cases":
+        for index, case in enumerate(SUSPICIOUS_CASES, start=1):
+            print(f"{index}. {case}")
         return 0
 
     if args.command == "inspect-source":

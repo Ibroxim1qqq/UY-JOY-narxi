@@ -63,3 +63,29 @@ Post link formati:
 ```text
 https://t.me/channel_username/message_id
 ```
+
+## Clean real-estate jadval
+
+`clean-telegram-real-estate` komandasi `telegram_posts.text` ichidagi raw matndan analitika uchun alohida ustunlar chiqaradi.
+
+Asosiy jadval:
+
+- `telegram_real_estate_posts`
+
+Power BI va pgAdmin uchun qulay view:
+
+- `telegram_real_estate_flat`
+
+Address bo'yicha ustunlar:
+
+- `adress` - postdagi asl address matni, o'zgartirilmaydi.
+- `shahar` - masalan `Toshkent shahri`, `Toshkent viloyati`.
+- `tuman` - masalan `Yunusobod`, `Olmazor`, `Qibray`, `Orta Chirchiq`.
+- `mahalla` - address segmentlaridan ajratilgan mahalla/massiv/mo'ljal qismi.
+
+Qayta clean qilish:
+
+```powershell
+$env:PYTHONPATH="C:\Users\Aslanbek\Documents\UY-JOY narxlari\src"
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli clean-telegram-real-estate
+```

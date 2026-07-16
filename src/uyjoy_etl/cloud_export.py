@@ -50,6 +50,9 @@ CLOUD_COLUMNS = (
     "raw_listing",
     "raw_detail",
     "content_hash",
+    "quality_status",
+    "quality_reasons",
+    "quality_checked_at",
     "first_seen_at",
     "last_seen_at",
     "detail_fetched_at",
@@ -58,7 +61,7 @@ CLOUD_COLUMNS = (
 )
 
 
-def export_cloud_csv(database: Database, csv_path: Path) -> int:
+def export_cloud_csv(database: Database, csv_path: Path, updated_since_days: int | None = None) -> int:
     """Cloud warehouse uchun yengil CSV tayyorlaydi.
 
     Lokal raw datada katta JSON va foto ro'yxatlar qoladi; cloudga esa dashboard
@@ -108,16 +111,34 @@ def export_cloud_csv(database: Database, csv_path: Path) -> int:
             '{}'::jsonb as raw_listing,
             null::jsonb as raw_detail,
             content_hash,
+            quality_status,
+            quality_reasons,
+            quality_checked_at,
             first_seen_at,
             last_seen_at,
             detail_fetched_at,
             updated_at,
             null::text as phone_number
         from olx_listing_raw
+        __WHERE_CLAUSE__
         order by olx_id
     """
+    where_clause = ""
+    params: tuple[Any, ...] = ()
+    if updated_since_days is not None:
+        where_clause = """
+        where greatest(
+            coalesce(updated_at, '-infinity'::timestamptz),
+            coalesce(last_seen_at, '-infinity'::timestamptz),
+            coalesce(last_refresh_time, '-infinity'::timestamptz),
+            coalesce(created_time, '-infinity'::timestamptz)
+        ) >= now() - (%s * interval '1 day')
+        """
+        params = (updated_since_days,)
+
+    query = query.replace("__WHERE_CLAUSE__", where_clause)
     with database.connect() as conn, csv_path.open("w", encoding="utf-8", newline="") as file:
-        rows = conn.execute(query).fetchall()
+        rows = conn.execute(query, params).fetchall()
         writer = csv.DictWriter(file, fieldnames=CLOUD_COLUMNS)
         writer.writeheader()
         for row in rows:
@@ -133,19 +154,60 @@ def import_cloud_csv(database: Database, schema_path: Path, csv_path: Path) -> i
 
     database.run_schema(schema_path)
     with database.connect() as conn, csv_path.open("r", encoding="utf-8", newline="") as file:
-        rows = csv.DictReader(file)
-        records = [_record_from_row(row) for row in rows]
+        row_count = sum(1 for _ in csv.DictReader(file))
+        file.seek(0)
+
         conn.execute("truncate table olx_fetch_logs, etl_runs, olx_listing_raw restart identity cascade")
-        if records:
-            placeholders = ", ".join([f"%({column})s" for column in CLOUD_COLUMNS])
-            columns = ", ".join(CLOUD_COLUMNS)
+        if row_count:
+            columns = ", ".join(f'"{column}"' for column in CLOUD_COLUMNS)
             with conn.cursor() as cur:
-                cur.executemany(
-                    f"insert into olx_listing_raw ({columns}) values ({placeholders})",
-                    records,
+                with cur.copy(
+                    f"copy olx_listing_raw ({columns}) from stdin with (format csv, header true)"
+                ) as copy:
+                    while chunk := file.read(1024 * 1024):
+                        copy.write(chunk)
+        conn.commit()
+    return row_count
+
+
+def upsert_cloud_csv(database: Database, schema_path: Path, csv_path: Path) -> int:
+    """CSVdagi OLX qatorlarini cloud Postgresga truncate qilmasdan upsert qiladi."""
+
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV topilmadi: {csv_path}")
+
+    database.run_schema(schema_path)
+    with database.connect() as conn, csv_path.open("r", encoding="utf-8", newline="") as file:
+        row_count = sum(1 for _ in csv.DictReader(file))
+        file.seek(0)
+
+        if row_count:
+            columns = ", ".join(f'"{column}"' for column in CLOUD_COLUMNS)
+            update_columns = [column for column in CLOUD_COLUMNS if column != "olx_id"]
+            update_sql = ", ".join(f'"{column}" = excluded."{column}"' for column in update_columns)
+
+            with conn.cursor() as cur:
+                cur.execute(
+                    "create temp table tmp_olx_listing_raw "
+                    "(like olx_listing_raw including defaults) on commit drop"
+                )
+                with cur.copy(
+                    f"copy tmp_olx_listing_raw ({columns}) from stdin with (format csv, header true)"
+                ) as copy:
+                    while chunk := file.read(1024 * 1024):
+                        copy.write(chunk)
+
+                cur.execute(
+                    f"""
+                    insert into olx_listing_raw ({columns})
+                    select {columns}
+                    from tmp_olx_listing_raw
+                    on conflict (olx_id) do update
+                    set {update_sql}
+                    """
                 )
         conn.commit()
-    return len(records)
+    return row_count
 
 
 def _csv_value(value: Any) -> str:
@@ -160,7 +222,15 @@ def _record_from_row(row: dict[str, str]) -> dict[str, Any]:
     record: dict[str, Any] = {}
     for column in CLOUD_COLUMNS:
         value = row.get(column) or None
-        if column in {"raw_params", "param_values", "raw_photos", "raw_listing", "raw_detail", "contact_raw"}:
+        if column in {
+            "raw_params",
+            "param_values",
+            "raw_photos",
+            "raw_listing",
+            "raw_detail",
+            "contact_raw",
+            "quality_reasons",
+        }:
             record[column] = Jsonb(_json_value(column, value))
         elif column in {"olx_id", "source_page", "category_id", "seller_id"}:
             record[column] = int(value) if value else None
