@@ -156,3 +156,46 @@ create index if not exists idx_telegram_posts_channel on telegram_posts(channel_
 create index if not exists idx_telegram_posts_posted_at on telegram_posts(posted_at);
 create index if not exists idx_telegram_posts_post_url on telegram_posts(post_url);
 create index if not exists idx_telegram_posts_text_trgm on telegram_posts using gin(text gin_trgm_ops);
+
+create table if not exists telegram_real_estate_posts (
+    id bigserial primary key,
+    channel_id bigint not null,
+    message_id bigint not null,
+    channel_username text,
+    channel_title text,
+    post_url text,
+    posted_at timestamptz,
+    source_text text,
+    is_sold boolean not null default false,
+    property_type text,
+    deal_type text,
+    address text,
+    landmark text,
+    price_display text,
+    price_value numeric,
+    price_currency text,
+    room_count integer,
+    floor_number integer,
+    total_floors integer,
+    area_m2 numeric,
+    land_sotix numeric,
+    repair_state text,
+    has_media boolean,
+    views integer,
+    forwards integer,
+    replies_count integer,
+    has_contact_phone boolean not null default false,
+    extraction_raw jsonb not null default '{}'::jsonb,
+    updated_at timestamptz not null default now(),
+    unique (channel_id, message_id)
+);
+
+create index if not exists idx_tg_re_posts_channel on telegram_real_estate_posts(channel_id);
+create index if not exists idx_tg_re_posts_property_type on telegram_real_estate_posts(property_type);
+create index if not exists idx_tg_re_posts_deal_type on telegram_real_estate_posts(deal_type);
+create index if not exists idx_tg_re_posts_price on telegram_real_estate_posts(price_value);
+create index if not exists idx_tg_re_posts_rooms on telegram_real_estate_posts(room_count);
+create index if not exists idx_tg_re_posts_area on telegram_real_estate_posts(area_m2);
+create index if not exists idx_tg_re_posts_land on telegram_real_estate_posts(land_sotix);
+create index if not exists idx_tg_re_posts_address_trgm on telegram_real_estate_posts using gin(address gin_trgm_ops);
+create index if not exists idx_tg_re_posts_text_trgm on telegram_real_estate_posts using gin(source_text gin_trgm_ops);

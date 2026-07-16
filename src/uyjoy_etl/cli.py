@@ -13,6 +13,7 @@ from uyjoy_etl.db import Database, mask_secret
 from uyjoy_etl.logging_config import configure_logging
 from uyjoy_etl.pipeline import OlxRawPipeline
 from uyjoy_etl.source_discovery import discover_sources, inspect_listing_source
+from uyjoy_etl.telegram_cleaner import clean_telegram_real_estate
 from uyjoy_etl.telegram_etl import scrape_telegram_channels, telegram_login
 
 logger = logging.getLogger(__name__)
@@ -27,6 +28,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("ping-db", help="Postgres connectionni tekshiradi")
     subparsers.add_parser("categories", help="Configdagi category pathlarni chiqaradi")
     subparsers.add_parser("telegram-login", help="Telegram API session yaratadi")
+    subparsers.add_parser(
+        "clean-telegram-real-estate",
+        help="Telegram raw postlardan real-estate clean fields chiqaradi",
+    )
 
     telegram_parser = subparsers.add_parser(
         "scrape-telegram",
@@ -182,6 +187,11 @@ def main(argv: list[str] | None = None) -> int:
                 f"inserted={summary.posts_inserted} "
                 f"updated={summary.posts_updated}"
             )
+        return 0
+
+    if args.command == "clean-telegram-real-estate":
+        summary = clean_telegram_real_estate(database)
+        print(f"rows_seen={summary.rows_seen} rows_upserted={summary.rows_upserted}")
         return 0
 
     if args.command == "inspect-source":
