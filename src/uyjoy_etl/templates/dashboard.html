@@ -51,26 +51,24 @@
             <span>OLX yangi/ko'rilgan va Telegram postlar</span>
           </div>
         </div>
+        <div class="chart-legend" aria-label="Chart legend">
+          <span><i class="legend-dot olx-new"></i>OLX yangi</span>
+          <span><i class="legend-dot olx-seen"></i>OLX ko'rilgan</span>
+          <span><i class="legend-dot telegram-new"></i>Telegram</span>
+        </div>
         <div class="flow-chart">
           {% for day in admin.daily_flow %}
             <div class="flow-row">
               <span class="flow-label">{{ day.label }}</span>
-              <div class="flow-bars">
-                <div class="bar-line">
-                  <span>OLX yangi</span>
-                  <div class="bar-track"><div class="bar-fill olx-new" style="width: {{ day.olx_new_pct }}%"></div></div>
-                  <strong>{{ day.olx_new }}</strong>
-                </div>
-                <div class="bar-line">
-                  <span>OLX ko'rilgan</span>
-                  <div class="bar-track"><div class="bar-fill olx-seen" style="width: {{ day.olx_seen_pct }}%"></div></div>
-                  <strong>{{ day.olx_seen }}</strong>
-                </div>
-                <div class="bar-line">
-                  <span>Telegram</span>
-                  <div class="bar-track"><div class="bar-fill telegram-new" style="width: {{ day.telegram_new_pct }}%"></div></div>
-                  <strong>{{ day.telegram_new }}</strong>
-                </div>
+              <div class="flow-stack">
+                <div class="flow-segment olx-new" style="width: {{ day.olx_new_pct }}%"></div>
+                <div class="flow-segment olx-seen" style="width: {{ day.olx_seen_pct }}%"></div>
+                <div class="flow-segment telegram-new" style="width: {{ day.telegram_new_pct }}%"></div>
+              </div>
+              <div class="flow-values">
+                <span>{{ day.olx_new }} yangi</span>
+                <span>{{ day.olx_seen }} ko'rilgan</span>
+                <span>{{ day.telegram_new }} tg</span>
               </div>
             </div>
           {% endfor %}

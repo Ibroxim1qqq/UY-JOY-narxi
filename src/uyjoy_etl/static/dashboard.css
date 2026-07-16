@@ -187,15 +187,37 @@ h2 {
   font-weight: 700;
 }
 
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
 .flow-chart {
   display: grid;
-  gap: 10px;
+  gap: 12px;
 }
 
 .flow-row {
   display: grid;
-  grid-template-columns: 54px 1fr;
-  gap: 10px;
+  grid-template-columns: 56px minmax(180px, 1fr) minmax(250px, 0.7fr);
+  gap: 12px;
   align-items: center;
 }
 
@@ -205,25 +227,53 @@ h2 {
   font-weight: 800;
 }
 
-.flow-bars,
+.flow-stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  min-width: 0;
+}
+
+.flow-segment {
+  height: 8px;
+  min-width: 2px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.flow-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.flow-values span {
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .mini-bars {
   display: grid;
   gap: 8px;
 }
 
-.bar-line,
 .mini-bar-row {
+  grid-template-columns: minmax(95px, 1.1fr) minmax(80px, 1fr) 58px;
   display: grid;
-  grid-template-columns: 92px minmax(80px, 1fr) 58px;
   gap: 8px;
   align-items: center;
 }
 
-.mini-bar-row {
-  grid-template-columns: minmax(95px, 1.1fr) minmax(80px, 1fr) 58px;
-}
-
-.bar-line span,
 .mini-bar-row span {
   min-width: 0;
   overflow: hidden;
@@ -234,7 +284,6 @@ h2 {
   white-space: nowrap;
 }
 
-.bar-line strong,
 .mini-bar-row strong {
   font-size: 12px;
   text-align: right;
@@ -656,6 +705,14 @@ pre {
   }
 
   .detail-row {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-row {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-values {
     grid-template-columns: 1fr;
   }
 }
