@@ -146,6 +146,10 @@
               <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
               <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
               <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+              {% if insights.price_trend.average_y %}
+                <line x1="58" y1="{{ insights.price_trend.average_y }}" x2="740" y2="{{ insights.price_trend.average_y }}" class="avg-line"></line>
+                <text x="646" y="{{ insights.price_trend.average_y - 8 }}" class="avg-label">Avg {{ insights.price_trend.average_display }}</text>
+              {% endif %}
               <text x="8" y="27" class="axis-text">{{ insights.price_trend.y_max_display }}</text>
               <text x="8" y="246" class="axis-text">{{ insights.price_trend.y_min_display }}</text>
               <polyline points="{{ insights.price_trend.polyline }}" class="price-line"></polyline>

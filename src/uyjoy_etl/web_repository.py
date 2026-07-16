@@ -910,6 +910,7 @@ class ListingRepository:
                 "polyline": "",
                 "latest_display": "-",
                 "average_display": "-",
+                "average_y": None,
                 "y_min_display": "-",
                 "y_max_display": "-",
                 "width": width,
@@ -959,6 +960,7 @@ class ListingRepository:
 
         latest_value = values[-1]
         average_value = sum(values) / len(values)
+        average_y = pad_top + ((y_max - average_value) / (y_max - y_min) * usable_height)
         return {
             "metric_label": metric_label,
             "currency_code": filters.currency_code,
@@ -966,6 +968,7 @@ class ListingRepository:
             "polyline": " ".join(polyline_parts),
             "latest_display": self._format_trend_money(latest_value, filters.currency_code, metric_label),
             "average_display": self._format_trend_money(average_value, filters.currency_code, metric_label),
+            "average_y": round(average_y, 2),
             "y_min_display": self._format_trend_money(y_min, filters.currency_code, metric_label),
             "y_max_display": self._format_trend_money(y_max, filters.currency_code, metric_label),
             "width": width,

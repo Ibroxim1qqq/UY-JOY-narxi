@@ -423,6 +423,18 @@ h2 {
   stroke-width: 1;
 }
 
+.avg-line {
+  stroke: var(--accent-2);
+  stroke-dasharray: 8 6;
+  stroke-width: 2;
+}
+
+.avg-label {
+  fill: var(--accent-2);
+  font-size: 12px;
+  font-weight: 850;
+}
+
 .price-line {
   fill: none;
   stroke: var(--accent);
