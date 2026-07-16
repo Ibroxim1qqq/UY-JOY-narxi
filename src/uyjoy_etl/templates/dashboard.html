@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>UY-JOY OLX Dashboard</title>
+  <title>UY-JOY Data Dashboard</title>
   <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
 </head>
 <body>
   <header class="topbar">
     <div>
-      <p class="eyebrow">OLX raw ETL</p>
+      <p class="eyebrow">Real estate ETL</p>
       <h1>Uy-joy e'lonlari</h1>
-      <p class="source-note">Manba: OLX.uz</p>
+      <p class="source-note">Manba: OLX.uz va Telegram public kanallar</p>
     </div>
     <a class="ghost-link" href="/">Yangilash</a>
   </header>
@@ -26,7 +26,7 @@
   <main class="page-shell">
     <section class="summary-grid" aria-label="Umumiy statistika">
       <div class="metric">
-        <span>Ko'rinadigan OLX</span>
+        <span>Ko'rinadigan e'lonlar</span>
         <strong>{{ stats.total_listings or 0 }}</strong>
       </div>
       <div class="metric">
@@ -121,7 +121,7 @@
         <div class="panel-heading">
           <div>
             <h2>Manbalar</h2>
-            <span>OLX category kesimida</span>
+            <span>OLX va Telegram kesimida</span>
           </div>
         </div>
         <div class="mini-bars">
@@ -139,7 +139,7 @@
         <div class="panel-heading">
           <div>
             <h2>Shaharlar</h2>
-            <span>Ko'rinadigan OLX e'lonlar</span>
+            <span>Ko'rinadigan e'lonlar</span>
           </div>
         </div>
         <div class="mini-bars">
@@ -196,6 +196,17 @@
         <label>
           <span>Qidiruv</span>
           <input name="q" value="{{ filters.q }}" placeholder="title, tuman, shahar, link">
+        </label>
+        <label>
+          <span>Manba</span>
+          <select name="source">
+            <option value="">Hammasi</option>
+            {% for source in facets.sources %}
+              <option value="{{ source.value }}" {% if filters.source == source.value %}selected{% endif %}>
+                {{ source.label }} ({{ source.count }})
+              </option>
+            {% endfor %}
+          </select>
         </label>
         <label>
           <span>Turi</span>
@@ -310,19 +321,23 @@
               {% for item in result.listings %}
                 <tr>
                   <td class="title-cell">
-                    <a href="/listing/{{ item.olx_id }}">{{ item.title or "Nomsiz e'lon" }}</a>
+                    <a href="/listing/{{ item.id }}">{{ item.title or "Nomsiz e'lon" }}</a>
                     <span>{{ item.short_description }}</span>
                   </td>
                   <td>{{ item.category_label }}</td>
                   <td>{{ item.rooms_display or "-" }}</td>
                   <td class="contact-cell">
-                    <a class="table-action" href="{{ item.listing_url }}" target="_blank" rel="noreferrer">OLXda aloqa</a>
+                    {% if item.source_url %}
+                      <a class="table-action" href="{{ item.source_url }}" target="_blank" rel="noreferrer">Manbada ochish</a>
+                    {% else %}
+                      -
+                    {% endif %}
                   </td>
-                  <td><span class="source-pill">OLX.uz</span></td>
+                  <td><span class="source-pill">{{ item.source_label or item.source }}</span></td>
                   <td class="price-cell">{{ item.price_display or "-" }}</td>
                   <td>{{ item.area_display or "-" }}</td>
                   <td>{{ item.region_name or "" }}{% if item.city_name %}, {{ item.city_name }}{% endif %}{% if item.district_name %}, {{ item.district_name }}{% endif %}</td>
-                  <td>{{ item.created_time or item.last_refresh_time or "-" }}</td>
+                  <td>{{ item.posted_at or item.last_seen_at or "-" }}</td>
                 </tr>
               {% endfor %}
             {% else %}

@@ -24,6 +24,7 @@ class ListingFilters:
     """Dashboard search formadan keladigan filterlar."""
 
     q: str = ""
+    source: str = ""
     category: str = ""
     deal_type: str = ""
     city: str = ""
@@ -54,7 +55,7 @@ class SearchResult:
 
 
 class ListingRepository:
-    """`olx_listing_raw` jadvali uchun read-only querylar."""
+    """`real_estate_listings` clean warehouse jadvali uchun read-only querylar."""
 
     def __init__(self, database: Database) -> None:
         self._database = database
@@ -65,15 +66,19 @@ class ListingRepository:
 
         with self._database.connect() as conn:
             total_row = conn.execute(
-                f"select count(*) as total from olx_listing_raw {where_sql}",
+                f"select count(*) as total from real_estate_listings {where_sql}",
                 params,
             ).fetchone()
             rows = conn.execute(
                 f"""
                 select
-                    olx_id,
-                    listing_url,
-                    source_category_path,
+                    id,
+                    source,
+                    source_listing_id,
+                    listing_code,
+                    source_url,
+                    source_name,
+                    source_category,
                     title,
                     description,
                     price_display,
@@ -82,15 +87,16 @@ class ListingRepository:
                     city_name,
                     district_name,
                     region_name,
-                    contact_phone,
-                    contact_name,
-                    created_time,
-                    last_refresh_time,
+                    address,
+                    room_count,
+                    area_m2,
+                    land_sotix,
+                    posted_at,
                     last_seen_at,
-                    param_values
-                from olx_listing_raw
+                    quality_status
+                from real_estate_listings
                 {where_sql}
-                order by coalesce(last_refresh_time, created_time, last_seen_at) desc nulls last
+                order by coalesce(posted_at, last_seen_at, updated_at) desc nulls last
                 limit %(limit)s offset %(offset)s
                 """,
                 params,
@@ -104,46 +110,52 @@ class ListingRepository:
             per_page=filters.per_page,
         )
 
-    def get_listing(self, olx_id: int) -> dict[str, Any] | None:
+    def get_listing(self, listing_id: int) -> dict[str, Any] | None:
         with self._database.connect() as conn:
             row = conn.execute(
                 """
                 select *
-                from olx_listing_raw
-                where olx_id = %s
+                from real_estate_listings
+                where id = %(listing_id)s
+                   or (source = 'olx' and source_listing_id = %(listing_id_text)s)
                 """,
-                (olx_id,),
+                {"listing_id": listing_id, "listing_id_text": str(listing_id)},
             ).fetchone()
 
         if not row:
             return None
 
         listing = dict(row)
-        listing["category_label"] = self._category_label(listing.get("source_category_path"))
-        listing["area_display"] = self._area_display(listing.get("param_values") or {})
-        listing["raw_payload_pretty"] = json.dumps(
-            listing.get("raw_detail") or listing.get("raw_listing") or {},
-            ensure_ascii=False,
-            indent=2,
-            default=str,
-        )
+        listing["category_label"] = self._category_label(listing.get("source_category"))
+        listing["source_label"] = self._source_label(listing.get("source"), listing.get("source_name"))
+        listing["area_display"] = self._area_display_from_columns(listing)
+        listing["raw_payload_pretty"] = json.dumps(dict(listing), ensure_ascii=False, indent=2, default=str)
         return listing
 
     def get_facets(self) -> dict[str, list[dict[str, Any]]]:
         with self._database.connect() as conn:
+            sources = conn.execute(
+                """
+                select source as value, count(*) as count
+                from real_estate_listings
+                where (quality_status is null or quality_status = 'ok')
+                group by source
+                order by count(*) desc, source
+                """
+            ).fetchall()
             categories = conn.execute(
                 """
-                select source_category_path as value, count(*) as count
-                from olx_listing_raw
+                select source_category as value, count(*) as count
+                from real_estate_listings
                 where (quality_status is null or quality_status = 'ok')
-                group by source_category_path
-                order by count(*) desc, source_category_path
+                group by source_category
+                order by count(*) desc, source_category
                 """
             ).fetchall()
             cities = conn.execute(
                 """
                 select city_name as value, count(*) as count
-                from olx_listing_raw
+                from real_estate_listings
                 where city_name is not null and city_name <> ''
                   and (quality_status is null or quality_status = 'ok')
                 group by city_name
@@ -154,7 +166,7 @@ class ListingRepository:
             districts = conn.execute(
                 """
                 select district_name as value, count(*) as count
-                from olx_listing_raw
+                from real_estate_listings
                 where district_name is not null and district_name <> ''
                   and (quality_status is null or quality_status = 'ok')
                 group by district_name
@@ -168,7 +180,7 @@ class ListingRepository:
                     select
                         case when room_count >= 7 then '7plus' else room_count::text end as value,
                         case when room_count >= 7 then 7 else room_count end as sort_order
-                    from olx_listing_raw
+                    from real_estate_listings
                     where room_count is not null
                       and (quality_status is null or quality_status = 'ok')
                 )
@@ -184,7 +196,7 @@ class ListingRepository:
                     count(*) filter (where deal_type = 'sale') as sale,
                     count(*) filter (where deal_type = 'rent') as rent,
                     count(*) filter (where deal_type = 'exchange') as exchange
-                from olx_listing_raw
+                from real_estate_listings
                 where (quality_status is null or quality_status = 'ok')
                 """
             ).fetchone()
@@ -192,6 +204,8 @@ class ListingRepository:
         category_facets: dict[str, dict[str, Any]] = {}
         for row in categories:
             source_path = row["value"]
+            if not source_path:
+                continue
             category = category_for_source_path(source_path)
             value = category.path if category else source_path
             label = category.name if category else source_path
@@ -207,6 +221,14 @@ class ListingRepository:
                     "count": int(deal_type_counts[key] or 0),
                 }
                 for key, config in DEAL_TYPE_FILTERS.items()
+            ],
+            "sources": [
+                {
+                    "value": row["value"],
+                    "label": self._source_label(row["value"], None),
+                    "count": row["count"],
+                }
+                for row in sources
             ],
             "categories": sorted(
                 category_facets.values(),
@@ -230,10 +252,10 @@ class ListingRepository:
                 """
                 select
                     count(*) as total_listings,
-                    count(distinct source_category_path) as categories_count,
+                    count(distinct source_category) as categories_count,
                     count(distinct city_name) filter (where city_name is not null) as cities_count,
-                    max(last_seen_at) as last_seen_at
-                from olx_listing_raw
+                    max(coalesce(last_seen_at, updated_at)) as last_seen_at
+                from real_estate_listings
                 where (quality_status is null or quality_status = 'ok')
                 """
             ).fetchone()
@@ -254,7 +276,8 @@ class ListingRepository:
                         count(*) filter (where first_seen_at >= current_date) as new_today,
                         count(*) filter (where last_seen_at >= current_date) as seen_today,
                         max(last_seen_at) as last_seen_at
-                    from olx_listing_raw
+                    from real_estate_listings
+                    where source = 'olx'
                     """
                 ).fetchone()
             )
@@ -266,9 +289,10 @@ class ListingRepository:
                         count(*) as clean_total,
                         count(*) filter (where quality_status = 'ok' or quality_status is null) as visible_total,
                         count(*) filter (where quality_status = 'suspicious') as suspicious_total,
-                        count(*) filter (where updated_at >= current_date) as clean_updated_today,
+                        count(*) filter (where first_seen_at >= current_date) as clean_updated_today,
                         max(updated_at) as last_clean_at
-                    from telegram_real_estate_posts
+                    from real_estate_listings
+                    where source = 'telegram'
                     """
                 ).fetchone()
             )
@@ -294,15 +318,17 @@ class ListingRepository:
                 )
                 select
                     to_char(days.day, 'DD.MM') as label,
-                    count(raw.olx_id) filter (where raw.last_seen_at::date = days.day) as olx_count,
+                    count(raw.id) filter (where raw.first_seen_at::date = days.day) as olx_count,
                     (
                         select count(*)
-                        from telegram_posts posts
-                        where posts.first_seen_at::date = days.day
+                        from real_estate_listings listings
+                        where listings.source = 'telegram'
+                          and listings.first_seen_at::date = days.day
                     ) as telegram_count
                 from days
-                left join olx_listing_raw raw
-                    on raw.last_seen_at::date = days.day
+                left join real_estate_listings raw
+                    on raw.first_seen_at::date = days.day
+                   and raw.source = 'olx'
                 group by days.day
                 order by days.day
                 """
@@ -310,12 +336,12 @@ class ListingRepository:
             source_breakdown = [dict(row) for row in conn.execute(
                 """
                 select
-                    source_category_path,
+                    source,
                     count(*) as total,
                     count(*) filter (where first_seen_at >= current_date) as new_today
-                from olx_listing_raw
+                from real_estate_listings
                 where quality_status = 'ok' or quality_status is null
-                group by source_category_path
+                group by source
                 order by count(*) desc
                 limit 8
                 """
@@ -323,7 +349,7 @@ class ListingRepository:
             city_breakdown = [dict(row) for row in conn.execute(
                 """
                 select city_name, count(*) as total
-                from olx_listing_raw
+                from real_estate_listings
                 where city_name is not null
                   and city_name <> ''
                   and (quality_status = 'ok' or quality_status is null)
@@ -337,11 +363,7 @@ class ListingRepository:
                 select reason, count(*) as total
                 from (
                     select jsonb_array_elements_text(quality_reasons) as reason
-                    from olx_listing_raw
-                    where quality_status = 'suspicious'
-                    union all
-                    select jsonb_array_elements_text(quality_reasons) as reason
-                    from telegram_real_estate_posts
+                    from real_estate_listings
                     where quality_status = 'suspicious'
                 ) reasons
                 group by reason
@@ -367,7 +389,7 @@ class ListingRepository:
             ).fetchall()]
 
         for row in source_breakdown:
-            row["label"] = self._category_label(row.get("source_category_path"))
+            row["label"] = self._source_label(row.get("source"), None)
 
         return {
             "olx": olx_summary,
@@ -387,11 +409,13 @@ class ListingRepository:
             rows = conn.execute(
                 """
                 select
-                    olx_id,
+                    id,
                     listing_code,
-                    listing_url,
+                    source,
+                    source_listing_id,
+                    source_url,
                     title,
-                    source_category_path,
+                    source_category,
                     deal_type,
                     price_value,
                     currency_code,
@@ -400,25 +424,26 @@ class ListingRepository:
                     district_name,
                     region_name,
                     room_count,
-                    param_values -> 'total_area' ->> 'normalizedValue' as total_area,
-                    param_values -> 'land_area' ->> 'normalizedValue' as land_area,
-                    param_values -> 'floor' ->> 'normalizedValue' as floor,
-                    param_values -> 'total_floors' ->> 'normalizedValue' as total_floors,
+                    area_m2 as total_area,
+                    land_sotix as land_area,
+                    floor_number as floor,
+                    total_floors,
                     seller_type,
                     is_business,
-                    created_time,
-                    last_refresh_time,
+                    posted_at as created_time,
+                    updated_at as last_refresh_time,
                     last_seen_at
-                from olx_listing_raw
+                from real_estate_listings
                 where (quality_status is null or quality_status = 'ok')
-                order by coalesce(last_refresh_time, created_time, last_seen_at) desc nulls last
+                order by coalesce(posted_at, last_seen_at, updated_at) desc nulls last
                 """
             ).fetchall()
 
         result: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)
-            item["category_label"] = self._category_label(item.get("source_category_path"))
+            item["category_label"] = self._category_label(item.get("source_category"))
+            item["source_label"] = self._source_label(item.get("source"), None)
             result.append(item)
         return result
 
@@ -436,21 +461,23 @@ class ListingRepository:
                     or city_name ilike %(q)s
                     or district_name ilike %(q)s
                     or region_name ilike %(q)s
-                    or listing_url ilike %(q)s
-                    or contact_phone ilike %(q)s
+                    or source_url ilike %(q)s
+                    or listing_code ilike %(q)s
                 )
                 """
             )
+
+        if filters.source:
+            params["source"] = filters.source
+            clauses.append("source = %(source)s")
 
         if filters.category:
             params["category"] = filters.category
             if category_by_path(filters.category):
                 params["category_prefix"] = filters.category.rstrip("/") + "/%"
-                clauses.append(
-                    "(source_category_path = %(category)s or source_category_path like %(category_prefix)s)"
-                )
+                clauses.append("(source_category = %(category)s or source_category like %(category_prefix)s)")
             else:
-                clauses.append("source_category_path = %(category)s")
+                clauses.append("source_category = %(category)s")
 
         if filters.deal_type in DEAL_TYPE_FILTERS:
             params["deal_type"] = filters.deal_type
@@ -481,10 +508,11 @@ class ListingRepository:
         return "where " + " and ".join(clauses), params
 
     def _format_listing_row(self, row: dict[str, Any]) -> dict[str, Any]:
-        row["category_label"] = self._category_label(row.get("source_category_path"))
-        row["area_display"] = self._area_display(row.get("param_values") or {})
-        row["rooms_display"] = self._param_display(row.get("param_values") or {}, "number_of_rooms")
-        row["contact_display"] = self._contact_display(row)
+        row["category_label"] = self._category_label(row.get("source_category"))
+        row["source_label"] = self._source_label(row.get("source"), row.get("source_name"))
+        row["area_display"] = self._area_display_from_columns(row)
+        row["rooms_display"] = str(row.get("room_count")) if row.get("room_count") else ""
+        row["contact_display"] = ""
         row["short_description"] = self._shorten(row.get("description") or "", max_length=180)
         return row
 
@@ -494,26 +522,21 @@ class ListingRepository:
         category = category_for_source_path(path)
         return category.name if category else path
 
-    def _area_display(self, params: dict[str, Any]) -> str:
-        for key in ("total_area", "land_area", "total_living_area"):
-            raw_value = self._param_display(params, key)
-            if raw_value:
-                return raw_value
-        return ""
+    def _source_label(self, source: str | None, source_name: str | None) -> str:
+        if source_name:
+            return source_name
+        if source == "olx":
+            return "OLX.uz"
+        if source == "telegram":
+            return "Telegram"
+        return source or ""
 
-    def _param_display(self, params: dict[str, Any], key: str) -> str:
-        value = params.get(key) or {}
-        raw_value = value.get("value") or value.get("normalizedValue")
-        if raw_value not in (None, ""):
-            return str(raw_value).strip()
+    def _area_display_from_columns(self, row: dict[str, Any]) -> str:
+        if row.get("area_m2") not in (None, ""):
+            return f"{row['area_m2']} m2"
+        if row.get("land_sotix") not in (None, ""):
+            return f"{row['land_sotix']} sotix"
         return ""
-
-    def _contact_display(self, row: dict[str, Any]) -> str:
-        phone = row.get("contact_phone")
-        if not phone:
-            return ""
-        name = row.get("contact_name")
-        return f"{name}: {phone}" if name else str(phone)
 
     def _shorten(self, value: str, max_length: int) -> str:
         clean_value = " ".join(value.split())

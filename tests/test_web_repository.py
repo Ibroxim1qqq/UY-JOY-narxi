@@ -59,9 +59,17 @@ class WebRepositoryTest(unittest.TestCase):
             ListingFilters(category="nedvizhimost/kvartiry/prodazha")
         )
 
-        self.assertIn("source_category_path like %(category_prefix)s", where_sql)
+        self.assertIn("source_category like %(category_prefix)s", where_sql)
         self.assertEqual(params["category"], "nedvizhimost/kvartiry/prodazha")
         self.assertEqual(params["category_prefix"], "nedvizhimost/kvartiry/prodazha/%")
+
+    def test_build_where_clause_filters_source(self) -> None:
+        repository = ListingRepository(database=None)  # type: ignore[arg-type]
+
+        where_sql, params = repository._build_where_clause(ListingFilters(source="telegram"))
+
+        self.assertIn("source = %(source)s", where_sql)
+        self.assertEqual(params["source"], "telegram")
 
 
 if __name__ == "__main__":

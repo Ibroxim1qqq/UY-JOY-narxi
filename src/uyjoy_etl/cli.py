@@ -17,6 +17,7 @@ from uyjoy_etl.pipeline import OlxRawPipeline
 from uyjoy_etl.source_discovery import discover_sources, inspect_listing_source
 from uyjoy_etl.telegram_cleaner import clean_telegram_real_estate
 from uyjoy_etl.telegram_etl import scrape_telegram_channels, telegram_login
+from uyjoy_etl.unified_listings import refresh_unified_listings
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser(
         "quality-cases",
         help="Noreal e'lon deb belgilanadigan case misollarini chiqaradi",
+    )
+    subparsers.add_parser(
+        "refresh-unified-listings",
+        help="OLX va Telegram datani bitta real_estate_listings jadvaliga yig'adi",
     )
 
     telegram_parser = subparsers.add_parser(
@@ -254,6 +259,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "quality-cases":
         for index, case in enumerate(SUSPICIOUS_CASES, start=1):
             print(f"{index}. {case}")
+        return 0
+
+    if args.command == "refresh-unified-listings":
+        summary = refresh_unified_listings(database)
+        print(
+            f"total_rows={summary.total_rows} "
+            f"olx_rows={summary.olx_rows} "
+            f"telegram_rows={summary.telegram_rows}"
+        )
         return 0
 
     if args.command == "inspect-source":

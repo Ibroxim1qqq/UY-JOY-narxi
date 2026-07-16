@@ -105,6 +105,9 @@ try {
     Write-Host "Noreal/shubhali e'lonlar quality filterdan o'tkazilmoqda..."
     & $python -m uyjoy_etl.cli mark-suspicious
 
+    Write-Host "OLX va Telegram bitta clean jadvalga yig'ilmoqda..."
+    & $python -m uyjoy_etl.cli refresh-unified-listings
+
     $resolvedCloudDatabaseUrl = Resolve-CloudDatabaseUrl -ExplicitValue $CloudDatabaseUrl -RootDir $root
     if (-not $SkipCloudSync -and $resolvedCloudDatabaseUrl) {
         Write-Host "Neon/cloud Postgres yangilanmoqda..."

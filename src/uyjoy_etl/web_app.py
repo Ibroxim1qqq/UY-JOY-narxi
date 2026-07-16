@@ -30,7 +30,7 @@ config = load_config()
 database = Database(config.database)
 repository = ListingRepository(database)
 
-app = FastAPI(title="UY-JOY OLX Dashboard")
+app = FastAPI(title="UY-JOY Data Dashboard")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 security = HTTPBasic(auto_error=False)
@@ -68,6 +68,7 @@ def dashboard(
     request: Request,
     _: None = Depends(_require_dashboard_auth),
     q: str = "",
+    source: str = "",
     category: str = "",
     deal_type: str = "",
     city: str = "",
@@ -79,6 +80,7 @@ def dashboard(
 ) -> HTMLResponse:
     filters = ListingFilters(
         q=q.strip(),
+        source=source.strip(),
         category=category.strip(),
         deal_type=deal_type.strip(),
         city=city.strip(),
@@ -97,7 +99,7 @@ def dashboard(
         error_message = None
     except Exception as exc:
         result = None
-        facets = {"deal_types": [], "categories": [], "cities": [], "districts": [], "rooms": []}
+        facets = {"deal_types": [], "sources": [], "categories": [], "cities": [], "districts": [], "rooms": []}
         stats = {}
         admin_overview = _empty_admin_overview()
         error_message = _friendly_error(exc)
@@ -108,6 +110,7 @@ def dashboard(
             "request": request,
             "filters": {
                 "q": q,
+                "source": source,
                 "category": category,
                 "deal_type": deal_type,
                 "city": city,
@@ -129,14 +132,14 @@ def dashboard(
     )
 
 
-@app.get("/listing/{olx_id}", response_class=HTMLResponse)
+@app.get("/listing/{listing_id}", response_class=HTMLResponse)
 def listing_detail(
     request: Request,
-    olx_id: int,
+    listing_id: int,
     _: None = Depends(_require_dashboard_auth),
 ) -> HTMLResponse:
     try:
-        listing = repository.get_listing(olx_id)
+        listing = repository.get_listing(listing_id)
     except Exception as exc:
         raise HTTPException(status_code=503, detail=_friendly_error(exc)) from exc
 
@@ -171,12 +174,15 @@ def powerbi_listings_csv(_: None = Depends(_require_dashboard_auth)) -> Streamin
 
     rows = repository.iter_powerbi_rows()
     headers = [
-        "olx_id",
+        "id",
+        "source",
+        "source_label",
+        "source_listing_id",
         "listing_code",
-        "listing_url",
+        "source_url",
         "title",
         "category_label",
-        "source_category_path",
+        "source_category",
         "deal_type",
         "price_value",
         "currency_code",

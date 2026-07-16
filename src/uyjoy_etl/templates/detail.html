@@ -9,9 +9,9 @@
 <body>
   <header class="topbar">
     <div>
-      <p class="eyebrow">OLX raw ETL</p>
+      <p class="eyebrow">Real estate ETL</p>
       <h1>{{ listing.title or "Nomsiz e'lon" }}</h1>
-      <p class="source-note">Manba: OLX.uz</p>
+      <p class="source-note">Manba: {{ listing.source_label or listing.source }}</p>
     </div>
     <a class="ghost-link" href="/">Ortga</a>
   </header>
@@ -32,39 +32,46 @@
       </div>
       <div class="detail-row">
         <span>Joylashuv</span>
-        <strong>{{ listing.location_path or listing.city_name or "-" }}</strong>
+        <strong>{{ listing.address or listing.district_name or listing.city_name or "-" }}</strong>
       </div>
       <div class="detail-row">
         <span>Manba</span>
-        <strong>OLX.uz</strong>
+        <strong>{{ listing.source_label or listing.source }}</strong>
       </div>
       <div class="detail-row">
-        <span>Aloqa</span>
-        <strong><a class="inline-action" href="{{ listing.listing_url }}" target="_blank" rel="noreferrer">OLXda aloqa qilish</a></strong>
+        <span>Asl e'lon</span>
+        <strong>
+          {% if listing.source_url %}
+            <a class="inline-action" href="{{ listing.source_url }}" target="_blank" rel="noreferrer">Manbada ochish</a>
+          {% else %}
+            -
+          {% endif %}
+        </strong>
       </div>
       <div class="detail-row">
         <span>Joylangan sana</span>
-        <strong>{{ listing.created_time or "-" }}</strong>
+        <strong>{{ listing.posted_at or listing.first_seen_at or "-" }}</strong>
       </div>
       <div class="description-block">
         <h2>Description</h2>
         <p>{{ listing.description or "-" }}</p>
       </div>
       <div class="link-actions">
-        <a class="primary-button" href="{{ listing.listing_url }}" target="_blank" rel="noreferrer">OLXda ochish</a>
-        <a class="secondary-button" href="{{ listing.listing_url }}" target="_blank" rel="noreferrer">OLXda aloqa qilish</a>
+        {% if listing.source_url %}
+          <a class="primary-button" href="{{ listing.source_url }}" target="_blank" rel="noreferrer">Manbada ochish</a>
+        {% endif %}
       </div>
     </section>
 
     <aside class="detail-side">
-      <h2>Raw params</h2>
+      <h2>Asosiy maydonlar</h2>
       <dl>
-        {% for param in listing.raw_params %}
-          <div>
-            <dt>{{ param.name or param.key }}</dt>
-            <dd>{{ param.value or param.normalizedValue }}</dd>
-          </div>
-        {% endfor %}
+        <div><dt>Listing ID</dt><dd>{{ listing.listing_code }}</dd></div>
+        <div><dt>Source ID</dt><dd>{{ listing.source_listing_id }}</dd></div>
+        <div><dt>Turi</dt><dd>{{ listing.deal_type or "-" }}</dd></div>
+        <div><dt>Xona</dt><dd>{{ listing.room_count or "-" }}</dd></div>
+        <div><dt>Qavat</dt><dd>{{ listing.floor_number or "-" }} / {{ listing.total_floors or "-" }}</dd></div>
+        <div><dt>Quality</dt><dd>{{ listing.quality_status }}</dd></div>
       </dl>
     </aside>
 

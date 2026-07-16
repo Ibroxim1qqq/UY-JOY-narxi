@@ -262,3 +262,63 @@ select
     source_text as asl_matn,
     updated_at as yangilangan_vaqt
 from telegram_real_estate_posts;
+
+create table if not exists real_estate_listings (
+    id bigserial primary key,
+    source text not null,
+    source_listing_id text not null,
+    listing_code text not null,
+    source_url text,
+    source_name text,
+    source_category text,
+
+    title text,
+    description text,
+    property_type text,
+    deal_type text,
+
+    price_display text,
+    price_value numeric,
+    currency_code text,
+    is_price_negotiable boolean,
+
+    city_name text,
+    district_name text,
+    region_name text,
+    neighborhood text,
+    address text,
+    latitude numeric,
+    longitude numeric,
+
+    room_count integer,
+    floor_number integer,
+    total_floors integer,
+    area_m2 numeric,
+    land_sotix numeric,
+
+    seller_type text,
+    is_business boolean,
+    has_media boolean,
+    views integer,
+
+    quality_status text not null default 'ok',
+    quality_reasons jsonb not null default '[]'::jsonb,
+
+    posted_at timestamptz,
+    first_seen_at timestamptz,
+    last_seen_at timestamptz,
+    updated_at timestamptz not null default now(),
+    unique (source, source_listing_id)
+);
+
+create index if not exists idx_re_listings_source on real_estate_listings(source);
+create index if not exists idx_re_listings_quality on real_estate_listings(quality_status);
+create index if not exists idx_re_listings_deal on real_estate_listings(deal_type);
+create index if not exists idx_re_listings_property on real_estate_listings(property_type);
+create index if not exists idx_re_listings_city on real_estate_listings(city_name);
+create index if not exists idx_re_listings_district on real_estate_listings(district_name);
+create index if not exists idx_re_listings_price on real_estate_listings(price_value);
+create index if not exists idx_re_listings_posted on real_estate_listings(posted_at desc);
+create index if not exists idx_re_listings_last_seen on real_estate_listings(last_seen_at desc);
+create index if not exists idx_re_listings_title_trgm on real_estate_listings using gin(title gin_trgm_ops);
+create index if not exists idx_re_listings_desc_trgm on real_estate_listings using gin(description gin_trgm_ops);

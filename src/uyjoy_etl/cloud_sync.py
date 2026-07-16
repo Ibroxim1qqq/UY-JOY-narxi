@@ -10,6 +10,7 @@ from psycopg.types.json import Jsonb
 from uyjoy_etl.cloud_export import export_cloud_csv, import_cloud_csv, upsert_cloud_csv
 from uyjoy_etl.config import DatabaseConfig
 from uyjoy_etl.db import Database
+from uyjoy_etl.unified_listings import refresh_unified_listings
 
 TELEGRAM_TABLES = (
     "telegram_channels",
@@ -55,10 +56,14 @@ def sync_cloud_database(
         else upsert_cloud_csv(cloud_database, schema_path, csv_path)
     )
     telegram_counts = _sync_telegram_tables(local_database, cloud_database)
+    unified_summary = refresh_unified_listings(cloud_database)
 
     return {
         "olx_exported": olx_rows,
         "olx_imported": imported_olx_rows,
+        "unified_total": unified_summary.total_rows,
+        "unified_olx": unified_summary.olx_rows,
+        "unified_telegram": unified_summary.telegram_rows,
         **telegram_counts,
     }
 
