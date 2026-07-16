@@ -908,8 +908,10 @@ class ListingRepository:
                 "currency_code": filters.currency_code,
                 "points": [],
                 "polyline": "",
+                "moving_average_polyline": "",
                 "latest_display": "-",
                 "average_display": "-",
+                "moving_average_latest_display": "-",
                 "average_y": None,
                 "y_min_display": "-",
                 "y_max_display": "-",
@@ -929,16 +931,27 @@ class ListingRepository:
 
         points: list[dict[str, Any]] = []
         polyline_parts: list[str] = []
+        moving_polyline_parts: list[str] = []
         for index, row in enumerate(rows):
             raw_value = row.get("avg_value")
             x = pad_left + (usable_width * index / denominator)
+            moving_average = self._moving_average_value(rows, index, window=5)
+            moving_y = None
+            moving_display = "-"
+            if moving_average is not None:
+                moving_y = pad_top + ((y_max - moving_average) / (y_max - y_min) * usable_height)
+                moving_display = self._format_trend_money(moving_average, filters.currency_code, metric_label)
+                moving_polyline_parts.append(f"{round(x, 2)},{round(moving_y, 2)}")
+
             if raw_value is None:
                 points.append(
                     {
                         "x": round(x, 2),
                         "y": None,
+                        "moving_y": round(moving_y, 2) if moving_y is not None else None,
                         "label": row["label"],
                         "display": "-",
+                        "moving_display": moving_display,
                         "count": int(row.get("listing_count") or 0),
                         "show_label": index == 0 or index == len(rows) - 1 or index % 7 == 0,
                     }
@@ -950,8 +963,10 @@ class ListingRepository:
             point = {
                 "x": round(x, 2),
                 "y": round(y, 2),
+                "moving_y": round(moving_y, 2) if moving_y is not None else None,
                 "label": row["label"],
                 "display": self._format_trend_money(value, filters.currency_code, metric_label),
+                "moving_display": moving_display,
                 "count": int(row.get("listing_count") or 0),
                 "show_label": index == 0 or index == len(rows) - 1 or index % 7 == 0,
             }
@@ -960,20 +975,48 @@ class ListingRepository:
 
         latest_value = values[-1]
         average_value = sum(values) / len(values)
+        latest_moving_average = self._last_moving_average(rows, window=5)
         average_y = pad_top + ((y_max - average_value) / (y_max - y_min) * usable_height)
         return {
             "metric_label": metric_label,
             "currency_code": filters.currency_code,
             "points": points,
             "polyline": " ".join(polyline_parts),
+            "moving_average_polyline": " ".join(moving_polyline_parts),
             "latest_display": self._format_trend_money(latest_value, filters.currency_code, metric_label),
             "average_display": self._format_trend_money(average_value, filters.currency_code, metric_label),
+            "moving_average_latest_display": self._format_trend_money(
+                latest_moving_average,
+                filters.currency_code,
+                metric_label,
+            )
+            if latest_moving_average is not None
+            else "-",
             "average_y": round(average_y, 2),
             "y_min_display": self._format_trend_money(y_min, filters.currency_code, metric_label),
             "y_max_display": self._format_trend_money(y_max, filters.currency_code, metric_label),
             "width": width,
             "height": height,
         }
+
+    def _moving_average_value(
+        self,
+        rows: list[dict[str, Any]],
+        index: int,
+        window: int,
+    ) -> float | None:
+        window_rows = rows[max(0, index - window + 1) : index + 1]
+        values = [float(row["avg_value"]) for row in window_rows if row.get("avg_value") is not None]
+        if not values:
+            return None
+        return sum(values) / len(values)
+
+    def _last_moving_average(self, rows: list[dict[str, Any]], window: int) -> float | None:
+        for index in range(len(rows) - 1, -1, -1):
+            value = self._moving_average_value(rows, index, window)
+            if value is not None:
+                return value
+        return None
 
     def _build_where_clause(self, filters: ListingFilters) -> tuple[str, dict[str, Any]]:
         clauses: list[str] = [VISIBLE_QUALITY_CLAUSE]

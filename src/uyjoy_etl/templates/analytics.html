@@ -136,12 +136,19 @@
           </div>
           <div class="line-kpis">
             <span>Oxirgi: <strong>{{ insights.price_trend.latest_display }}</strong></span>
+            <span>5 kunlik avg: <strong>{{ insights.price_trend.moving_average_latest_display }}</strong></span>
             <span>O'rtacha: <strong>{{ insights.price_trend.average_display }}</strong></span>
           </div>
         </div>
         {% if insights.price_trend.points %}
           <div class="line-chart-wrap">
             <svg class="line-chart" viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" role="img" aria-label="Narx trendi line graph">
+              <g class="line-chart-legend">
+                <line x1="592" y1="17" x2="626" y2="17" class="price-line legend-line"></line>
+                <text x="632" y="21">Kunlik avg</text>
+                <line x1="592" y1="37" x2="626" y2="37" class="moving-average-line legend-line"></line>
+                <text x="632" y="41">5 kunlik avg</text>
+              </g>
               <line x1="58" y1="22" x2="58" y2="242" class="axis-line"></line>
               <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
               <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
@@ -152,11 +159,14 @@
               {% endif %}
               <text x="8" y="27" class="axis-text">{{ insights.price_trend.y_max_display }}</text>
               <text x="8" y="246" class="axis-text">{{ insights.price_trend.y_min_display }}</text>
+              {% if insights.price_trend.moving_average_polyline %}
+                <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
+              {% endif %}
               <polyline points="{{ insights.price_trend.polyline }}" class="price-line"></polyline>
               {% for point in insights.price_trend.points %}
                 {% if point.y %}
                   <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" class="price-point">
-                    <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon</title>
+                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon</title>
                   </circle>
                 {% endif %}
                 {% if point.show_label %}

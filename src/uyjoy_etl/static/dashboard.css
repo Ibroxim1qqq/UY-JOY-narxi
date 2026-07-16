@@ -443,6 +443,24 @@ h2 {
   stroke-width: 3;
 }
 
+.moving-average-line {
+  fill: none;
+  stroke: #4267ac;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.legend-line {
+  stroke-width: 3.2;
+}
+
+.line-chart-legend text {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .price-point {
   fill: #fff;
   stroke: var(--accent);
