@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Uy-joy bozor tahlili | UY-JOY</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Market analytics</p>
+      <h1>Uy-joy bozor tahlili</h1>
+      <p class="source-note">Clean jadval: real_estate_listings. Faqat quality OK e'lonlar hisoblanadi.</p>
+    </div>
+    <nav class="top-actions" aria-label="Dashboard sahifalari">
+      <a class="ghost-link" href="/">E'lonlar</a>
+      <a class="ghost-link" href="/analytics">Yangilash</a>
+    </nav>
+  </header>
+
+  {% if error_message %}
+    <section class="notice">
+      <strong>Analytics hozir ko'rinmayapti.</strong>
+      <span>{{ error_message }}</span>
+    </section>
+  {% endif %}
+
+  <main class="page-shell">
+    <section class="summary-grid" aria-label="Bozor KPI">
+      <div class="metric">
+        <span>Clean e'lonlar</span>
+        <strong>{{ insights.summary.total or 0 }}</strong>
+      </div>
+      <div class="metric">
+        <span>Sotuv</span>
+        <strong>{{ insights.summary.sale_total or 0 }}</strong>
+      </div>
+      <div class="metric">
+        <span>Ijara</span>
+        <strong>{{ insights.summary.rent_total or 0 }}</strong>
+      </div>
+      <div class="metric">
+        <span>Narxi bor e'lonlar</span>
+        <strong>{{ insights.summary.priced_total or 0 }}</strong>
+      </div>
+    </section>
+
+    <section class="analytics-grid" aria-label="Bozor chartlari">
+      <div class="admin-card span-2">
+        <div class="panel-heading">
+          <div>
+            <h2>14 kunlik yangi taklif</h2>
+            <span>Manba bo'yicha yangi e'lonlar oqimi</span>
+          </div>
+        </div>
+        <div class="chart-legend">
+          <span><i class="legend-dot olx-bar"></i>OLX</span>
+          <span><i class="legend-dot telegram-bar"></i>Telegram</span>
+        </div>
+        <div class="trend-bars">
+          {% for day in insights.daily_supply %}
+            <div class="trend-day">
+              <span>{{ day.label }}</span>
+              <div class="trend-stack">
+                <div class="trend-fill olx-bar" style="height: {{ day.olx_total_pct }}%" title="OLX: {{ day.olx_total }}"></div>
+                <div class="trend-fill telegram-bar" style="height: {{ day.telegram_total_pct }}%" title="Telegram: {{ day.telegram_total }}"></div>
+              </div>
+              <strong>{{ (day.olx_total or 0) + (day.telegram_total or 0) }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Manba ulushi</h2>
+            <span>OLX va Telegram data balansi</span>
+          </div>
+        </div>
+        <div class="donut-list">
+          {% for item in insights.source_mix %}
+            <div class="donut-row">
+              <span>{{ item.label }}</span>
+              <div class="bar-track"><div class="bar-fill source-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Sotuv / ijara</h2>
+            <span>Deal type kesimi</span>
+          </div>
+        </div>
+        <div class="mini-bars">
+          {% for item in insights.deal_mix %}
+            <div class="mini-bar-row">
+              <span>{{ item.label }}</span>
+              <div class="bar-track"><div class="bar-fill deal-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card span-2">
+        <div class="panel-heading">
+          <div>
+            <h2>Top shaharlar</h2>
+            <span>E'lon soni va median narxlar</span>
+          </div>
+        </div>
+        <div class="compact-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Shahar</th>
+                <th>Jami</th>
+                <th>Sotuv</th>
+                <th>Ijara</th>
+                <th>Median USD</th>
+                <th>Median UZS</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for city in insights.top_cities %}
+                <tr>
+                  <td>{{ city.city_name }}</td>
+                  <td>{{ city.total }}</td>
+                  <td>{{ city.sale_total }}</td>
+                  <td>{{ city.rent_total }}</td>
+                  <td>{{ city.median_usd_display }}</td>
+                  <td>{{ city.median_uzs_display }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="admin-card span-2">
+        <div class="panel-heading">
+          <div>
+            <h2>Top tumanlar</h2>
+            <span>Sotuv va ijara faolligi</span>
+          </div>
+        </div>
+        <div class="district-bars">
+          {% for district in insights.top_districts %}
+            <div class="district-row">
+              <span>{{ district.district_name }}</span>
+              <div class="split-track">
+                <div class="split-sale" style="width: {{ district.sale_total_pct }}%"></div>
+                <div class="split-rent" style="width: {{ district.rent_total_pct }}%"></div>
+              </div>
+              <strong>{{ district.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Obyekt turlari</h2>
+            <span>Kvartira, hovli, yer va boshqalar</span>
+          </div>
+        </div>
+        <div class="mini-bars">
+          {% for item in insights.property_mix %}
+            <div class="mini-bar-row">
+              <span>{{ item.label }}</span>
+              <div class="bar-track"><div class="bar-fill property-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Xonalar</h2>
+            <span>Room count taqsimoti</span>
+          </div>
+        </div>
+        <div class="room-chart">
+          {% for room in insights.room_mix %}
+            <div class="room-column">
+              <div class="room-fill" style="height: {{ room.total_pct }}%"></div>
+              <strong>{{ room.total }}</strong>
+              <span>{{ room.room_label }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Maydon segmentlari</h2>
+            <span>m2 bo'yicha takliflar</span>
+          </div>
+        </div>
+        <div class="mini-bars">
+          {% for item in insights.area_bands %}
+            <div class="mini-bar-row">
+              <span>{{ item.label }}</span>
+              <div class="bar-track"><div class="bar-fill area-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>USD narx segmentlari</h2>
+            <span>Valyutasi USD bo'lgan e'lonlar</span>
+          </div>
+        </div>
+        <div class="mini-bars">
+          {% for item in insights.usd_price_bands %}
+            <div class="mini-bar-row">
+              <span>{{ item.label }}</span>
+              <div class="bar-track"><div class="bar-fill price-band-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card span-2">
+        <div class="panel-heading">
+          <div>
+            <h2>Narx benchmarklari</h2>
+            <span>Deal type va valyuta bo'yicha median / P90</span>
+          </div>
+        </div>
+        <div class="compact-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Turi</th>
+                <th>Valyuta</th>
+                <th>E'lon</th>
+                <th>Median</th>
+                <th>P90</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in insights.price_summary %}
+                <tr>
+                  <td>{{ item.deal_label }}</td>
+                  <td>{{ item.currency_code }}</td>
+                  <td>{{ item.total }}</td>
+                  <td>{{ item.median_display }}</td>
+                  <td>{{ item.p90_display }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -132,6 +132,28 @@ def dashboard(
     )
 
 
+@app.get("/analytics", response_class=HTMLResponse)
+def analytics(
+    request: Request,
+    _: None = Depends(_require_dashboard_auth),
+) -> HTMLResponse:
+    try:
+        insights = repository.get_market_insights()
+        error_message = None
+    except Exception as exc:
+        insights = _empty_market_insights()
+        error_message = _friendly_error(exc)
+
+    return templates.TemplateResponse(
+        "analytics.html",
+        {
+            "request": request,
+            "insights": insights,
+            "error_message": error_message,
+        },
+    )
+
+
 @app.get("/listing/{listing_id}", response_class=HTMLResponse)
 def listing_detail(
     request: Request,
@@ -239,4 +261,20 @@ def _empty_admin_overview() -> dict[str, object]:
         "cities": [],
         "quality_reasons": [],
         "recent_runs": [],
+    }
+
+
+def _empty_market_insights() -> dict[str, object]:
+    return {
+        "summary": {},
+        "source_mix": [],
+        "deal_mix": [],
+        "property_mix": [],
+        "top_cities": [],
+        "top_districts": [],
+        "room_mix": [],
+        "area_bands": [],
+        "usd_price_bands": [],
+        "price_summary": [],
+        "daily_supply": [],
     }

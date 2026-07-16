@@ -16,6 +16,16 @@ DEAL_TYPE_FILTERS = {
     "rent": {"label": "Ijara"},
     "exchange": {"label": "Almashuv"},
 }
+PROPERTY_LABELS = {
+    "apartment": "Kvartira",
+    "house": "Uy / hovli",
+    "land": "Yer",
+    "garage": "Garaj",
+    "commercial": "Tijorat joy",
+    "hotel": "Hotel",
+    "hostel": "Hostel",
+    "sanatorium": "Dam olish joyi",
+}
 VISIBLE_QUALITY_CLAUSE = "(quality_status is null or quality_status = 'ok')"
 
 
@@ -402,6 +412,232 @@ class ListingRepository:
             "recent_runs": recent_runs,
         }
 
+    def get_market_insights(self) -> dict[str, Any]:
+        """Uy-joy bozori analytics sahifasi uchun source-backed agregat metrikalar."""
+
+        visible_clause = "quality_status is null or quality_status = 'ok'"
+        with self._database.connect() as conn:
+            summary = dict(
+                conn.execute(
+                    f"""
+                    select
+                        count(*) as total,
+                        count(*) filter (where deal_type = 'sale') as sale_total,
+                        count(*) filter (where deal_type = 'rent') as rent_total,
+                        count(*) filter (where source = 'olx') as olx_total,
+                        count(*) filter (where source = 'telegram') as telegram_total,
+                        count(*) filter (where price_value is not null) as priced_total,
+                        count(distinct city_name) filter (where city_name is not null and city_name <> '') as city_total,
+                        max(coalesce(posted_at, last_seen_at, updated_at)) as freshest_at
+                    from real_estate_listings
+                    where {visible_clause}
+                    """
+                ).fetchone()
+            )
+            source_mix = [dict(row) for row in conn.execute(
+                f"""
+                select source, count(*) as total
+                from real_estate_listings
+                where {visible_clause}
+                group by source
+                order by count(*) desc
+                """
+            ).fetchall()]
+            deal_mix = [dict(row) for row in conn.execute(
+                f"""
+                select coalesce(deal_type, 'unknown') as deal_type, count(*) as total
+                from real_estate_listings
+                where {visible_clause}
+                group by coalesce(deal_type, 'unknown')
+                order by count(*) desc
+                """
+            ).fetchall()]
+            property_mix = [dict(row) for row in conn.execute(
+                f"""
+                select coalesce(property_type, 'unknown') as property_type, count(*) as total
+                from real_estate_listings
+                where {visible_clause}
+                group by coalesce(property_type, 'unknown')
+                order by count(*) desc
+                limit 10
+                """
+            ).fetchall()]
+            top_cities = [dict(row) for row in conn.execute(
+                f"""
+                select
+                    city_name,
+                    count(*) as total,
+                    count(*) filter (where deal_type = 'sale') as sale_total,
+                    count(*) filter (where deal_type = 'rent') as rent_total,
+                    percentile_cont(0.5) within group (order by price_value)
+                        filter (where currency_code = 'USD' and price_value > 0) as median_usd,
+                    percentile_cont(0.5) within group (order by price_value)
+                        filter (where currency_code = 'UZS' and price_value > 0) as median_uzs
+                from real_estate_listings
+                where {visible_clause}
+                  and city_name is not null
+                  and city_name <> ''
+                group by city_name
+                order by count(*) desc
+                limit 10
+                """
+            ).fetchall()]
+            top_districts = [dict(row) for row in conn.execute(
+                f"""
+                select
+                    coalesce(district_name, 'Tuman ko''rsatilmagan') as district_name,
+                    count(*) as total,
+                    count(*) filter (where deal_type = 'sale') as sale_total,
+                    count(*) filter (where deal_type = 'rent') as rent_total
+                from real_estate_listings
+                where {visible_clause}
+                group by coalesce(district_name, 'Tuman ko''rsatilmagan')
+                order by count(*) desc
+                limit 12
+                """
+            ).fetchall()]
+            room_mix = [dict(row) for row in conn.execute(
+                f"""
+                with room_rows as (
+                    select
+                        case when room_count >= 6 then '6+' else room_count::text end as room_label,
+                        case when room_count >= 6 then 6 else room_count end as sort_order
+                    from real_estate_listings
+                    where {visible_clause}
+                      and room_count is not null
+                )
+                select room_label, count(*) as total
+                from room_rows
+                group by room_label, sort_order
+                order by sort_order
+                """
+            ).fetchall()]
+            area_bands = [dict(row) for row in conn.execute(
+                f"""
+                with banded as (
+                    select
+                        case
+                            when area_m2 < 40 then '0-40 m2'
+                            when area_m2 < 60 then '40-60 m2'
+                            when area_m2 < 80 then '60-80 m2'
+                            when area_m2 < 120 then '80-120 m2'
+                            else '120+ m2'
+                        end as label,
+                        case
+                            when area_m2 < 40 then 1
+                            when area_m2 < 60 then 2
+                            when area_m2 < 80 then 3
+                            when area_m2 < 120 then 4
+                            else 5
+                        end as sort_order
+                    from real_estate_listings
+                    where {visible_clause}
+                      and area_m2 is not null
+                      and area_m2 > 0
+                )
+                select label, count(*) as total
+                from banded
+                group by label, sort_order
+                order by sort_order
+                """
+            ).fetchall()]
+            usd_price_bands = [dict(row) for row in conn.execute(
+                f"""
+                with banded as (
+                    select
+                        case
+                            when price_value < 30000 then '< $30k'
+                            when price_value < 50000 then '$30k-$50k'
+                            when price_value < 80000 then '$50k-$80k'
+                            when price_value < 120000 then '$80k-$120k'
+                            else '$120k+'
+                        end as label,
+                        case
+                            when price_value < 30000 then 1
+                            when price_value < 50000 then 2
+                            when price_value < 80000 then 3
+                            when price_value < 120000 then 4
+                            else 5
+                        end as sort_order
+                    from real_estate_listings
+                    where {visible_clause}
+                      and currency_code = 'USD'
+                      and price_value is not null
+                      and price_value > 0
+                )
+                select label, count(*) as total
+                from banded
+                group by label, sort_order
+                order by sort_order
+                """
+            ).fetchall()]
+            price_summary = [dict(row) for row in conn.execute(
+                f"""
+                select
+                    coalesce(deal_type, 'unknown') as deal_type,
+                    currency_code,
+                    count(*) as total,
+                    percentile_cont(0.5) within group (order by price_value) as median_price,
+                    percentile_cont(0.9) within group (order by price_value) as p90_price
+                from real_estate_listings
+                where {visible_clause}
+                  and price_value is not null
+                  and price_value > 0
+                  and currency_code in ('USD', 'UZS')
+                group by coalesce(deal_type, 'unknown'), currency_code
+                order by coalesce(deal_type, 'unknown'), currency_code
+                """
+            ).fetchall()]
+            daily_supply = [dict(row) for row in conn.execute(
+                f"""
+                with days as (
+                    select generate_series(
+                        current_date - interval '13 days',
+                        current_date,
+                        interval '1 day'
+                    )::date as day
+                )
+                select
+                    to_char(days.day, 'DD.MM') as label,
+                    count(listings.id) filter (where listings.source = 'olx') as olx_total,
+                    count(listings.id) filter (where listings.source = 'telegram') as telegram_total
+                from days
+                left join real_estate_listings listings
+                    on listings.first_seen_at::date = days.day
+                   and ({visible_clause})
+                group by days.day
+                order by days.day
+                """
+            ).fetchall()]
+
+        for row in source_mix:
+            row["label"] = self._source_label(row.get("source"), None)
+        for row in deal_mix:
+            row["label"] = self._deal_label(row.get("deal_type"))
+        for row in property_mix:
+            row["label"] = self._property_label(row.get("property_type"))
+        for row in top_cities:
+            row["median_usd_display"] = self._format_money(row.get("median_usd"), "USD")
+            row["median_uzs_display"] = self._format_money(row.get("median_uzs"), "UZS")
+        for row in price_summary:
+            row["deal_label"] = self._deal_label(row.get("deal_type"))
+            row["median_display"] = self._format_money(row.get("median_price"), row.get("currency_code"))
+            row["p90_display"] = self._format_money(row.get("p90_price"), row.get("currency_code"))
+
+        return {
+            "summary": summary,
+            "source_mix": _with_percent(source_mix, ("total",)),
+            "deal_mix": _with_percent(deal_mix, ("total",)),
+            "property_mix": _with_percent(property_mix, ("total",)),
+            "top_cities": _with_percent(top_cities, ("total",)),
+            "top_districts": _with_percent(top_districts, ("total", "sale_total", "rent_total")),
+            "room_mix": _with_percent(room_mix, ("total",)),
+            "area_bands": _with_percent(area_bands, ("total",)),
+            "usd_price_bands": _with_percent(usd_price_bands, ("total",)),
+            "price_summary": price_summary,
+            "daily_supply": _with_percent(daily_supply, ("olx_total", "telegram_total")),
+        }
+
     def iter_powerbi_rows(self) -> list[dict[str, Any]]:
         """Power BI uchun kontaktlarsiz, analizga qulay yassi dataset qaytaradi."""
 
@@ -530,6 +766,32 @@ class ListingRepository:
         if source == "telegram":
             return "Telegram"
         return source or ""
+
+    def _deal_label(self, deal_type: str | None) -> str:
+        if deal_type in DEAL_TYPE_FILTERS:
+            return DEAL_TYPE_FILTERS[deal_type]["label"]
+        if deal_type == "rent_daily":
+            return "Sutkalik ijara"
+        if deal_type == "rent_long":
+            return "Uzoq muddatli ijara"
+        if deal_type == "unknown":
+            return "Aniqlanmagan"
+        return deal_type or "Aniqlanmagan"
+
+    def _property_label(self, property_type: str | None) -> str:
+        if not property_type:
+            return "Aniqlanmagan"
+        return PROPERTY_LABELS.get(property_type, property_type)
+
+    def _format_money(self, value: Any, currency_code: str | None) -> str:
+        if value in (None, ""):
+            return "-"
+        amount = float(value)
+        if currency_code == "USD":
+            return f"${amount:,.0f}"
+        if currency_code == "UZS":
+            return f"{amount:,.0f} so'm"
+        return f"{amount:,.0f}"
 
     def _area_display_from_columns(self, row: dict[str, Any]) -> str:
         if row.get("area_m2") not in (None, ""):
