@@ -48,27 +48,32 @@
         <div class="panel-heading">
           <div>
             <h2>7 kunlik data oqimi</h2>
-            <span>OLX yangi/ko'rilgan va Telegram postlar</span>
+            <span>Kunlik tortilgan OLX va Telegram datalari</span>
           </div>
         </div>
         <div class="chart-legend" aria-label="Chart legend">
-          <span><i class="legend-dot olx-new"></i>OLX yangi</span>
-          <span><i class="legend-dot olx-seen"></i>OLX ko'rilgan</span>
-          <span><i class="legend-dot telegram-new"></i>Telegram</span>
+          <span><i class="legend-dot olx-bar"></i>OLX</span>
+          <span><i class="legend-dot telegram-bar"></i>Telegram</span>
         </div>
-        <div class="flow-chart">
+        <div class="daily-bar-chart">
           {% for day in admin.daily_flow %}
-            <div class="flow-row">
-              <span class="flow-label">{{ day.label }}</span>
-              <div class="flow-stack">
-                <div class="flow-segment olx-new" style="width: {{ day.olx_new_pct }}%"></div>
-                <div class="flow-segment olx-seen" style="width: {{ day.olx_seen_pct }}%"></div>
-                <div class="flow-segment telegram-new" style="width: {{ day.telegram_new_pct }}%"></div>
-              </div>
-              <div class="flow-values">
-                <span>{{ day.olx_new }} yangi</span>
-                <span>{{ day.olx_seen }} ko'rilgan</span>
-                <span>{{ day.telegram_new }} tg</span>
+            <div class="daily-bar-row">
+              <span class="daily-label">{{ day.label }}</span>
+              <div class="daily-bars">
+                <div class="daily-bar-group">
+                  <span class="daily-source">OLX</span>
+                  <div class="daily-track">
+                    <div class="daily-fill olx-bar" style="width: {{ day.olx_count_pct }}%"></div>
+                  </div>
+                  <strong>{{ day.olx_count }}</strong>
+                </div>
+                <div class="daily-bar-group">
+                  <span class="daily-source">Telegram</span>
+                  <div class="daily-track">
+                    <div class="daily-fill telegram-bar" style="width: {{ day.telegram_count_pct }}%"></div>
+                  </div>
+                  <strong>{{ day.telegram_count }}</strong>
+                </div>
               </div>
             </div>
           {% endfor %}

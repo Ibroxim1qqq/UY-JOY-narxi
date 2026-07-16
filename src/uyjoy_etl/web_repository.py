@@ -294,17 +294,15 @@ class ListingRepository:
                 )
                 select
                     to_char(days.day, 'DD.MM') as label,
-                    count(raw.olx_id) filter (where raw.first_seen_at::date = days.day) as olx_new,
-                    count(raw.olx_id) filter (where raw.last_seen_at::date = days.day) as olx_seen,
+                    count(raw.olx_id) filter (where raw.last_seen_at::date = days.day) as olx_count,
                     (
                         select count(*)
                         from telegram_posts posts
                         where posts.first_seen_at::date = days.day
-                    ) as telegram_new
+                    ) as telegram_count
                 from days
                 left join olx_listing_raw raw
-                    on raw.first_seen_at::date = days.day
-                    or raw.last_seen_at::date = days.day
+                    on raw.last_seen_at::date = days.day
                 group by days.day
                 order by days.day
                 """
@@ -375,7 +373,7 @@ class ListingRepository:
             "olx": olx_summary,
             "telegram": telegram_summary,
             "fetch": fetch_summary,
-            "daily_flow": _with_percent(daily_flow, ("olx_new", "olx_seen", "telegram_new")),
+            "daily_flow": _with_percent(daily_flow, ("olx_count", "telegram_count")),
             "sources": _with_percent(source_breakdown, ("total",)),
             "cities": _with_percent(city_breakdown, ("total",)),
             "quality_reasons": _with_percent(quality_reasons, ("total",)),
