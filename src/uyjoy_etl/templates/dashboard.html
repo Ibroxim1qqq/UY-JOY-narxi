@@ -26,20 +26,165 @@
   <main class="page-shell">
     <section class="summary-grid" aria-label="Umumiy statistika">
       <div class="metric">
-        <span>Jami</span>
+        <span>Ko'rinadigan OLX</span>
         <strong>{{ stats.total_listings or 0 }}</strong>
       </div>
       <div class="metric">
-        <span>Kategoriya</span>
-        <strong>{{ stats.categories_count or 0 }}</strong>
+        <span>Bugun yangi OLX</span>
+        <strong>{{ admin.olx.new_today or 0 }}</strong>
       </div>
       <div class="metric">
-        <span>Shahar</span>
-        <strong>{{ stats.cities_count or 0 }}</strong>
+        <span>Telegram clean</span>
+        <strong>{{ admin.telegram.clean_total or 0 }}</strong>
       </div>
       <div class="metric">
-        <span>Oxirgi ko'rilgan</span>
-        <strong class="metric-date">{{ stats.last_seen_at or "-" }}</strong>
+        <span>Quality yashirgan</span>
+        <strong>{{ (admin.olx.suspicious_total or 0) + (admin.telegram.suspicious_total or 0) }}</strong>
+      </div>
+    </section>
+
+    <section class="admin-grid" aria-label="Admin overview">
+      <div class="admin-card span-2">
+        <div class="panel-heading">
+          <div>
+            <h2>7 kunlik data oqimi</h2>
+            <span>OLX yangi/ko'rilgan va Telegram postlar</span>
+          </div>
+        </div>
+        <div class="flow-chart">
+          {% for day in admin.daily_flow %}
+            <div class="flow-row">
+              <span class="flow-label">{{ day.label }}</span>
+              <div class="flow-bars">
+                <div class="bar-line">
+                  <span>OLX yangi</span>
+                  <div class="bar-track"><div class="bar-fill olx-new" style="width: {{ day.olx_new_pct }}%"></div></div>
+                  <strong>{{ day.olx_new }}</strong>
+                </div>
+                <div class="bar-line">
+                  <span>OLX ko'rilgan</span>
+                  <div class="bar-track"><div class="bar-fill olx-seen" style="width: {{ day.olx_seen_pct }}%"></div></div>
+                  <strong>{{ day.olx_seen }}</strong>
+                </div>
+                <div class="bar-line">
+                  <span>Telegram</span>
+                  <div class="bar-track"><div class="bar-fill telegram-new" style="width: {{ day.telegram_new_pct }}%"></div></div>
+                  <strong>{{ day.telegram_new }}</strong>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Pipeline holati</h2>
+            <span>Bugungi requestlar va oxirgi sync</span>
+          </div>
+        </div>
+        <dl class="ops-list">
+          <div><dt>OLX raw</dt><dd>{{ admin.olx.raw_total or 0 }}</dd></div>
+          <div><dt>OLX ko'rinadi</dt><dd>{{ admin.olx.visible_total or 0 }}</dd></div>
+          <div><dt>Bugun ko'rilgan</dt><dd>{{ admin.olx.seen_today or 0 }}</dd></div>
+          <div><dt>Request bugun</dt><dd>{{ admin.fetch.requests_today or 0 }}</dd></div>
+          <div><dt>Xato request</dt><dd>{{ admin.fetch.failed_today or 0 }}</dd></div>
+          <div><dt>Oxirgi fetch</dt><dd>{{ admin.fetch.last_fetch_at or "-" }}</dd></div>
+        </dl>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Quality nazorat</h2>
+            <span>Noreal e'lonlar sabablari</span>
+          </div>
+        </div>
+        <div class="mini-bars">
+          {% for item in admin.quality_reasons %}
+            <div class="mini-bar-row">
+              <span>{{ item.reason }}</span>
+              <div class="bar-track"><div class="bar-fill quality-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% else %}
+            <p class="empty-mini">Quality sabablari yo'q.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Manbalar</h2>
+            <span>OLX category kesimida</span>
+          </div>
+        </div>
+        <div class="mini-bars">
+          {% for item in admin.sources %}
+            <div class="mini-bar-row">
+              <span>{{ item.label }}</span>
+              <div class="bar-track"><div class="bar-fill source-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <div class="panel-heading">
+          <div>
+            <h2>Shaharlar</h2>
+            <span>Ko'rinadigan OLX e'lonlar</span>
+          </div>
+        </div>
+        <div class="mini-bars">
+          {% for item in admin.cities %}
+            <div class="mini-bar-row">
+              <span>{{ item.city_name }}</span>
+              <div class="bar-track"><div class="bar-fill city-bar" style="width: {{ item.total_pct }}%"></div></div>
+              <strong>{{ item.total }}</strong>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="admin-card span-2">
+        <div class="panel-heading">
+          <div>
+            <h2>Oxirgi ETL runlar</h2>
+            <span>Scrape jarayonlari audit logi</span>
+          </div>
+        </div>
+        <div class="compact-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Source</th>
+                <th>Status</th>
+                <th>Seen</th>
+                <th>Insert</th>
+                <th>Update</th>
+                <th>Boshlangan</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for run in admin.recent_runs %}
+                <tr>
+                  <td>{{ run.source }}</td>
+                  <td><span class="status-pill status-{{ run.status }}">{{ run.status }}</span></td>
+                  <td>{{ run.listings_seen }}</td>
+                  <td>{{ run.rows_inserted }}</td>
+                  <td>{{ run.rows_updated }}</td>
+                  <td>{{ run.started_at }}</td>
+                </tr>
+              {% else %}
+                <tr><td colspan="6" class="empty-cell">ETL runlar hali yo'q.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 

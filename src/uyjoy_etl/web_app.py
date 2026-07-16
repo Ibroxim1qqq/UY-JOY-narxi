@@ -93,11 +93,13 @@ def dashboard(
         result = repository.search(filters)
         facets = repository.get_facets()
         stats = repository.get_stats()
+        admin_overview = repository.get_admin_overview()
         error_message = None
     except Exception as exc:
         result = None
         facets = {"deal_types": [], "categories": [], "cities": [], "districts": [], "rooms": []}
         stats = {}
+        admin_overview = _empty_admin_overview()
         error_message = _friendly_error(exc)
 
     return templates.TemplateResponse(
@@ -117,6 +119,7 @@ def dashboard(
             "result": result,
             "facets": facets,
             "stats": stats,
+            "admin": admin_overview,
             "error_message": error_message,
             "prev_url": _page_url(request, page - 1) if result and page > 1 else None,
             "next_url": _page_url(request, page + 1)
@@ -218,3 +221,16 @@ def _friendly_error(exc: Exception) -> str:
     if is_missing_table_error(exc):
         return "Database schema hali yaratilmagan. Avval migration ishlating."
     return f"Databasega ulanish yoki query bajarishda xato: {exc}"
+
+
+def _empty_admin_overview() -> dict[str, object]:
+    return {
+        "olx": {},
+        "telegram": {},
+        "fetch": {},
+        "daily_flow": [],
+        "sources": [],
+        "cities": [],
+        "quality_reasons": [],
+        "recent_runs": [],
+    }

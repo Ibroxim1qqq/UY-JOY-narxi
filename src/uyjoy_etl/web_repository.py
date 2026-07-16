@@ -240,6 +240,148 @@ class ListingRepository:
 
         return dict(row)
 
+    def get_admin_overview(self) -> dict[str, Any]:
+        """Admin panel uchun operatsion metrikalar va chart datasini qaytaradi."""
+
+        with self._database.connect() as conn:
+            olx_summary = dict(
+                conn.execute(
+                    """
+                    select
+                        count(*) as raw_total,
+                        count(*) filter (where quality_status = 'ok' or quality_status is null) as visible_total,
+                        count(*) filter (where quality_status = 'suspicious') as suspicious_total,
+                        count(*) filter (where first_seen_at >= current_date) as new_today,
+                        count(*) filter (where last_seen_at >= current_date) as seen_today,
+                        max(last_seen_at) as last_seen_at
+                    from olx_listing_raw
+                    """
+                ).fetchone()
+            )
+            telegram_summary = dict(
+                conn.execute(
+                    """
+                    select
+                        (select count(*) from telegram_posts) as raw_total,
+                        count(*) as clean_total,
+                        count(*) filter (where quality_status = 'ok' or quality_status is null) as visible_total,
+                        count(*) filter (where quality_status = 'suspicious') as suspicious_total,
+                        count(*) filter (where updated_at >= current_date) as clean_updated_today,
+                        max(updated_at) as last_clean_at
+                    from telegram_real_estate_posts
+                    """
+                ).fetchone()
+            )
+            fetch_summary = dict(
+                conn.execute(
+                    """
+                    select
+                        count(*) filter (where fetched_at >= current_date) as requests_today,
+                        count(*) filter (where fetched_at >= current_date and ok is false) as failed_today,
+                        max(fetched_at) as last_fetch_at
+                    from olx_fetch_logs
+                    """
+                ).fetchone()
+            )
+            daily_flow = [dict(row) for row in conn.execute(
+                """
+                with days as (
+                    select generate_series(
+                        current_date - interval '6 days',
+                        current_date,
+                        interval '1 day'
+                    )::date as day
+                )
+                select
+                    to_char(days.day, 'DD.MM') as label,
+                    count(raw.olx_id) filter (where raw.first_seen_at::date = days.day) as olx_new,
+                    count(raw.olx_id) filter (where raw.last_seen_at::date = days.day) as olx_seen,
+                    (
+                        select count(*)
+                        from telegram_posts posts
+                        where posts.first_seen_at::date = days.day
+                    ) as telegram_new
+                from days
+                left join olx_listing_raw raw
+                    on raw.first_seen_at::date = days.day
+                    or raw.last_seen_at::date = days.day
+                group by days.day
+                order by days.day
+                """
+            ).fetchall()]
+            source_breakdown = [dict(row) for row in conn.execute(
+                """
+                select
+                    source_category_path,
+                    count(*) as total,
+                    count(*) filter (where first_seen_at >= current_date) as new_today
+                from olx_listing_raw
+                where quality_status = 'ok' or quality_status is null
+                group by source_category_path
+                order by count(*) desc
+                limit 8
+                """
+            ).fetchall()]
+            city_breakdown = [dict(row) for row in conn.execute(
+                """
+                select city_name, count(*) as total
+                from olx_listing_raw
+                where city_name is not null
+                  and city_name <> ''
+                  and (quality_status = 'ok' or quality_status is null)
+                group by city_name
+                order by count(*) desc
+                limit 8
+                """
+            ).fetchall()]
+            quality_reasons = [dict(row) for row in conn.execute(
+                """
+                select reason, count(*) as total
+                from (
+                    select jsonb_array_elements_text(quality_reasons) as reason
+                    from olx_listing_raw
+                    where quality_status = 'suspicious'
+                    union all
+                    select jsonb_array_elements_text(quality_reasons) as reason
+                    from telegram_real_estate_posts
+                    where quality_status = 'suspicious'
+                ) reasons
+                group by reason
+                order by count(*) desc
+                limit 8
+                """
+            ).fetchall()]
+            recent_runs = [dict(row) for row in conn.execute(
+                """
+                select
+                    source,
+                    status,
+                    started_at,
+                    finished_at,
+                    listings_seen,
+                    rows_inserted,
+                    rows_updated,
+                    error_message
+                from etl_runs
+                order by started_at desc
+                limit 8
+                """
+            ).fetchall()]
+
+        for row in source_breakdown:
+            row["label"] = self._category_label(row.get("source_category_path"))
+
+        return {
+            "olx": olx_summary,
+            "telegram": telegram_summary,
+            "fetch": fetch_summary,
+            "daily_flow": _with_percent(daily_flow, ("olx_new", "olx_seen", "telegram_new")),
+            "sources": _with_percent(source_breakdown, ("total",)),
+            "cities": _with_percent(city_breakdown, ("total",)),
+            "quality_reasons": _with_percent(quality_reasons, ("total",)),
+            "recent_runs": recent_runs,
+        }
+
     def iter_powerbi_rows(self) -> list[dict[str, Any]]:
         """Power BI uchun kontaktlarsiz, analizga qulay yassi dataset qaytaradi."""
 
@@ -396,3 +538,16 @@ def parse_decimal(value: str | None) -> Decimal | None:
 
 def is_missing_table_error(exc: Exception) -> bool:
     return isinstance(exc, psycopg.errors.UndefinedTable)
+
+
+def _with_percent(rows: list[dict[str, Any]], value_keys: tuple[str, ...]) -> list[dict[str, Any]]:
+    max_value = 0
+    for row in rows:
+        for key in value_keys:
+            max_value = max(max_value, int(row.get(key) or 0))
+
+    for row in rows:
+        for key in value_keys:
+            value = int(row.get(key) or 0)
+            row[f"{key}_pct"] = round((value / max_value) * 100, 2) if max_value else 0
+    return rows
