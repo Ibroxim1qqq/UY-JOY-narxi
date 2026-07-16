@@ -73,11 +73,22 @@ class OlxConfig:
 
 
 @dataclass(frozen=True)
+class TelegramConfig:
+    """Telegram public channel ETL uchun sozlamalar."""
+
+    api_id: int | None
+    api_hash: str
+    session_name: str
+    default_limit: int
+
+
+@dataclass(frozen=True)
 class AppConfig:
     root_dir: Path
     logs_dir: Path
     database: DatabaseConfig
     olx: OlxConfig
+    telegram: TelegramConfig
 
 
 def load_config() -> AppConfig:
@@ -104,7 +115,14 @@ def load_config() -> AppConfig:
         fetch_details=_bool_from_env(os.getenv("OLX_FETCH_DETAILS"), True),
     )
 
-    return AppConfig(root_dir=root_dir, logs_dir=logs_dir, database=database, olx=olx)
+    telegram = TelegramConfig(
+        api_id=_int_from_env(os.getenv("TELEGRAM_API_ID")),
+        api_hash=os.getenv("TELEGRAM_API_HASH", "").strip(),
+        session_name=os.getenv("TELEGRAM_SESSION_NAME", "secrets/uyjoy_telegram").strip(),
+        default_limit=int(os.getenv("TELEGRAM_DEFAULT_LIMIT", "100")),
+    )
+
+    return AppConfig(root_dir=root_dir, logs_dir=logs_dir, database=database, olx=olx, telegram=telegram)
 
 
 def _database_config_from_env() -> DatabaseConfig:
@@ -127,3 +145,9 @@ def _database_config_from_env() -> DatabaseConfig:
         user=os.getenv("POSTGRES_USER", "postgres"),
         password=os.getenv("POSTGRES_PASSWORD", ""),
     )
+
+
+def _int_from_env(value: str | None) -> int | None:
+    if not value:
+        return None
+    return int(value)

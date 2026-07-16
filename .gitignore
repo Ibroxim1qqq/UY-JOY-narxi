@@ -9,3 +9,4 @@ logs/
 tools/
 backups/
 infra/cloudflare/config.yml
+secrets/

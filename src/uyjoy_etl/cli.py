@@ -13,6 +13,7 @@ from uyjoy_etl.db import Database, mask_secret
 from uyjoy_etl.logging_config import configure_logging
 from uyjoy_etl.pipeline import OlxRawPipeline
 from uyjoy_etl.source_discovery import discover_sources, inspect_listing_source
+from uyjoy_etl.telegram_etl import scrape_telegram_channels, telegram_login
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,14 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("migrate-cloud", help="Cloud uchun yengil schema_cloud.sql ni ishlatadi")
     subparsers.add_parser("ping-db", help="Postgres connectionni tekshiradi")
     subparsers.add_parser("categories", help="Configdagi category pathlarni chiqaradi")
+    subparsers.add_parser("telegram-login", help="Telegram API session yaratadi")
+
+    telegram_parser = subparsers.add_parser(
+        "scrape-telegram",
+        help="Public Telegram kanallardan postlarni olib Postgresga yozadi",
+    )
+    telegram_parser.add_argument("channels", nargs="+", help="@channel yoki https://t.me/channel ro'yxati")
+    telegram_parser.add_argument("--limit", type=int, default=None, help="Har kanal uchun nechta post olinadi")
 
     export_cloud_parser = subparsers.add_parser(
         "export-cloud-csv",
@@ -153,6 +162,26 @@ def main(argv: list[str] | None = None) -> int:
                 )
             else:
                 print(category_path)
+        return 0
+
+    if args.command == "telegram-login":
+        telegram_login(config)
+        return 0
+
+    if args.command == "scrape-telegram":
+        summaries = scrape_telegram_channels(
+            config=config,
+            database=database,
+            channels=args.channels,
+            limit=args.limit,
+        )
+        for summary in summaries:
+            print(
+                f"channel={summary.channel} "
+                f"seen={summary.posts_seen} "
+                f"inserted={summary.posts_inserted} "
+                f"updated={summary.posts_updated}"
+            )
         return 0
 
     if args.command == "inspect-source":

@@ -165,3 +165,39 @@ create index if not exists idx_olx_listing_raw_phone_number on olx_listing_raw(p
 create index if not exists idx_olx_listing_raw_contact_phone_trgm on olx_listing_raw using gin(contact_phone gin_trgm_ops);
 create index if not exists idx_olx_listing_raw_listing_code_trgm on olx_listing_raw using gin(listing_code gin_trgm_ops);
 
+create table if not exists telegram_channels (
+    channel_id bigint primary key,
+    username text,
+    title text,
+    channel_url text,
+    raw_channel jsonb not null default '{}'::jsonb,
+    first_seen_at timestamptz not null default now(),
+    last_seen_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create table if not exists telegram_posts (
+    id bigserial primary key,
+    channel_id bigint not null references telegram_channels(channel_id) on delete cascade,
+    message_id bigint not null,
+    channel_username text,
+    channel_title text,
+    post_url text,
+    posted_at timestamptz,
+    text text,
+    views integer,
+    forwards integer,
+    replies_count integer,
+    has_media boolean not null default false,
+    media_type text,
+    raw_message jsonb not null default '{}'::jsonb,
+    first_seen_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (channel_id, message_id)
+);
+
+create index if not exists idx_telegram_channels_username on telegram_channels(username);
+create index if not exists idx_telegram_posts_channel on telegram_posts(channel_id);
+create index if not exists idx_telegram_posts_posted_at on telegram_posts(posted_at);
+create index if not exists idx_telegram_posts_post_url on telegram_posts(post_url);
+create index if not exists idx_telegram_posts_text_trgm on telegram_posts using gin(text gin_trgm_ops);
