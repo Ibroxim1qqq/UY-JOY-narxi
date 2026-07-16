@@ -8,6 +8,15 @@
       "MaintenanceDB": "uyjoy_olx",
       "Username": "uyjoy",
       "SSLMode": "prefer"
+    },
+    "2": {
+      "Name": "UY-JOY Local Postgres",
+      "Group": "Servers",
+      "Host": "host.docker.internal",
+      "Port": 55432,
+      "MaintenanceDB": "uyjoy_olx",
+      "Username": "uyjoy",
+      "SSLMode": "prefer"
     }
   }
 }
