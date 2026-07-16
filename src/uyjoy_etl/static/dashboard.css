@@ -185,6 +185,10 @@ h2 {
   grid-column: span 2;
 }
 
+.span-4 {
+  grid-column: 1 / -1;
+}
+
 .panel-heading {
   display: flex;
   justify-content: space-between;
@@ -370,6 +374,78 @@ h2 {
 
 .price-band-bar {
   background: #b9472f;
+}
+
+.line-kpis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.line-kpis span {
+  display: inline-flex;
+  gap: 4px;
+  min-height: 30px;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.line-kpis strong {
+  color: var(--text);
+}
+
+.line-chart-wrap {
+  overflow-x: auto;
+}
+
+.line-chart {
+  display: block;
+  width: 100%;
+  min-width: 760px;
+  height: auto;
+}
+
+.axis-line {
+  stroke: #cfc7ba;
+  stroke-width: 1.2;
+}
+
+.grid-line {
+  stroke: #e8e1d7;
+  stroke-dasharray: 4 6;
+  stroke-width: 1;
+}
+
+.price-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.price-point {
+  fill: #fff;
+  stroke: var(--accent);
+  stroke-width: 2.2;
+}
+
+.axis-text,
+.x-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.x-label {
+  text-anchor: middle;
 }
 
 .trend-bars {
@@ -597,6 +673,10 @@ h2 {
 
 .search-form label:first-child {
   grid-column: span 2;
+}
+
+.analytics-filter-form label:first-child {
+  grid-column: auto;
 }
 
 label span {
@@ -873,6 +953,10 @@ pre {
   }
 
   .span-2 {
+    grid-column: auto;
+  }
+
+  .span-4 {
     grid-column: auto;
   }
 

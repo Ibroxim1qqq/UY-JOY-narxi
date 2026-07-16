@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from decimal import Decimal
 
-from uyjoy_etl.web_repository import ListingFilters, ListingRepository, parse_decimal
+from uyjoy_etl.web_repository import ListingFilters, ListingRepository, MarketInsightFilters, parse_decimal
 
 
 class WebRepositoryTest(unittest.TestCase):
@@ -70,6 +70,17 @@ class WebRepositoryTest(unittest.TestCase):
 
         self.assertIn("source = %(source)s", where_sql)
         self.assertEqual(params["source"], "telegram")
+
+    def test_market_auto_metric_prefers_rent_price_then_apartment_m2(self) -> None:
+        repository = ListingRepository(database=None)  # type: ignore[arg-type]
+
+        rent_trend = repository._market_trend_sql(MarketInsightFilters(deal_type="rent", metric="auto"))
+        apartment_trend = repository._market_trend_sql(
+            MarketInsightFilters(property_type="apartment", metric="auto")
+        )
+
+        self.assertEqual(rent_trend["value_expression"], "price_value")
+        self.assertIn("area_m2", apartment_trend["extra_predicate"])
 
 
 if __name__ == "__main__":

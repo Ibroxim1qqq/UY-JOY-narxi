@@ -46,7 +46,126 @@
       </div>
     </section>
 
+    <section class="toolbar" aria-label="Analytics filterlari">
+      <form method="get" class="search-form analytics-filter-form">
+        <label>
+          <span>Turi</span>
+          <select name="deal_type">
+            <option value="">Hammasi</option>
+            {% for item in insights.facets.deal_types %}
+              <option value="{{ item.value }}" {% if insights.filters.deal_type == item.value %}selected{% endif %}>
+                {{ item.label }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Obyekt</span>
+          <select name="property_type">
+            <option value="">Hammasi</option>
+            {% for item in insights.facets.property_types %}
+              <option value="{{ item.value }}" {% if insights.filters.property_type == item.value %}selected{% endif %}>
+                {{ item.label }} ({{ item.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Shahar</span>
+          <select name="city">
+            <option value="">Hammasi</option>
+            {% for item in insights.facets.cities %}
+              <option value="{{ item.value }}" {% if insights.filters.city == item.value %}selected{% endif %}>
+                {{ item.value }} ({{ item.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Tuman</span>
+          <select name="district">
+            <option value="">Hammasi</option>
+            {% for item in insights.facets.districts %}
+              <option value="{{ item.value }}" {% if insights.filters.district == item.value %}selected{% endif %}>
+                {{ item.value }} ({{ item.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Valyuta</span>
+          <select name="currency_code">
+            {% for item in insights.facets.currencies %}
+              <option value="{{ item.value }}" {% if insights.filters.currency_code == item.value %}selected{% endif %}>
+                {{ item.value }} ({{ item.count }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>Line metric</span>
+          <select name="metric">
+            <option value="auto" {% if insights.filters.metric == "auto" %}selected{% endif %}>Auto</option>
+            <option value="avg_price" {% if insights.filters.metric == "avg_price" %}selected{% endif %}>Avg narx</option>
+            <option value="avg_price_m2" {% if insights.filters.metric == "avg_price_m2" %}selected{% endif %}>Avg m2 narx</option>
+          </select>
+        </label>
+        <label>
+          <span>Kun</span>
+          <select name="days">
+            {% for day_count in [30, 60, 90, 180] %}
+              <option value="{{ day_count }}" {% if insights.filters.days == day_count %}selected{% endif %}>
+                {{ day_count }} kun
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="form-actions">
+          <button type="submit" class="primary-button">Ko'rish</button>
+          <a class="secondary-button" href="/analytics">Tozalash</a>
+        </div>
+      </form>
+    </section>
+
     <section class="analytics-grid" aria-label="Bozor chartlari">
+      <div class="admin-card span-4">
+        <div class="panel-heading">
+          <div>
+            <h2>Joylangan sana bo'yicha narx trendi</h2>
+            <span>{{ insights.price_trend.metric_label }}: {{ insights.price_trend.currency_code }}, {{ insights.filters.days }} kun</span>
+          </div>
+          <div class="line-kpis">
+            <span>Oxirgi: <strong>{{ insights.price_trend.latest_display }}</strong></span>
+            <span>O'rtacha: <strong>{{ insights.price_trend.average_display }}</strong></span>
+          </div>
+        </div>
+        {% if insights.price_trend.points %}
+          <div class="line-chart-wrap">
+            <svg class="line-chart" viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" role="img" aria-label="Narx trendi line graph">
+              <line x1="58" y1="22" x2="58" y2="242" class="axis-line"></line>
+              <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+              <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
+              <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+              <text x="8" y="27" class="axis-text">{{ insights.price_trend.y_max_display }}</text>
+              <text x="8" y="246" class="axis-text">{{ insights.price_trend.y_min_display }}</text>
+              <polyline points="{{ insights.price_trend.polyline }}" class="price-line"></polyline>
+              {% for point in insights.price_trend.points %}
+                {% if point.y %}
+                  <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" class="price-point">
+                    <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon</title>
+                  </circle>
+                {% endif %}
+                {% if point.show_label %}
+                  <text x="{{ point.x }}" y="266" class="x-label">{{ point.label }}</text>
+                {% endif %}
+              {% endfor %}
+            </svg>
+          </div>
+        {% else %}
+          <p class="empty-mini">Bu filterlar bo'yicha line graph uchun yetarli narx/maydon datasi topilmadi.</p>
+        {% endif %}
+      </div>
+
       <div class="admin-card span-2">
         <div class="panel-heading">
           <div>

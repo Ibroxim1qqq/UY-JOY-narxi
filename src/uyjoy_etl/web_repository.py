@@ -51,6 +51,19 @@ class ListingFilters:
 
 
 @dataclass(frozen=True)
+class MarketInsightFilters:
+    """Analytics sahifasida chartlarni kesimlash uchun filterlar."""
+
+    deal_type: str = ""
+    property_type: str = ""
+    city: str = ""
+    district: str = ""
+    currency_code: str = "USD"
+    metric: str = "auto"
+    days: int = 60
+
+
+@dataclass(frozen=True)
 class SearchResult:
     listings: list[dict[str, Any]]
     total: int
@@ -412,11 +425,15 @@ class ListingRepository:
             "recent_runs": recent_runs,
         }
 
-    def get_market_insights(self) -> dict[str, Any]:
+    def get_market_insights(self, filters: MarketInsightFilters | None = None) -> dict[str, Any]:
         """Uy-joy bozori analytics sahifasi uchun source-backed agregat metrikalar."""
 
-        visible_clause = "quality_status is null or quality_status = 'ok'"
+        filters = filters or MarketInsightFilters()
+        filters = self._normalize_market_filters(filters)
+        where_sql, params = self._build_market_where_clause(filters)
+        trend = self._market_trend_sql(filters)
         with self._database.connect() as conn:
+            facets = self._get_market_facets(conn)
             summary = dict(
                 conn.execute(
                     f"""
@@ -430,37 +447,41 @@ class ListingRepository:
                         count(distinct city_name) filter (where city_name is not null and city_name <> '') as city_total,
                         max(coalesce(posted_at, last_seen_at, updated_at)) as freshest_at
                     from real_estate_listings
-                    where {visible_clause}
-                    """
+                    {where_sql}
+                    """,
+                    params,
                 ).fetchone()
             )
             source_mix = [dict(row) for row in conn.execute(
                 f"""
                 select source, count(*) as total
                 from real_estate_listings
-                where {visible_clause}
+                {where_sql}
                 group by source
                 order by count(*) desc
-                """
+                """,
+                params,
             ).fetchall()]
             deal_mix = [dict(row) for row in conn.execute(
                 f"""
                 select coalesce(deal_type, 'unknown') as deal_type, count(*) as total
                 from real_estate_listings
-                where {visible_clause}
+                {where_sql}
                 group by coalesce(deal_type, 'unknown')
                 order by count(*) desc
-                """
+                """,
+                params,
             ).fetchall()]
             property_mix = [dict(row) for row in conn.execute(
                 f"""
                 select coalesce(property_type, 'unknown') as property_type, count(*) as total
                 from real_estate_listings
-                where {visible_clause}
+                {where_sql}
                 group by coalesce(property_type, 'unknown')
                 order by count(*) desc
                 limit 10
-                """
+                """,
+                params,
             ).fetchall()]
             top_cities = [dict(row) for row in conn.execute(
                 f"""
@@ -474,13 +495,14 @@ class ListingRepository:
                     percentile_cont(0.5) within group (order by price_value)
                         filter (where currency_code = 'UZS' and price_value > 0) as median_uzs
                 from real_estate_listings
-                where {visible_clause}
+                {where_sql}
                   and city_name is not null
                   and city_name <> ''
                 group by city_name
                 order by count(*) desc
                 limit 10
-                """
+                """,
+                params,
             ).fetchall()]
             top_districts = [dict(row) for row in conn.execute(
                 f"""
@@ -490,11 +512,12 @@ class ListingRepository:
                     count(*) filter (where deal_type = 'sale') as sale_total,
                     count(*) filter (where deal_type = 'rent') as rent_total
                 from real_estate_listings
-                where {visible_clause}
+                {where_sql}
                 group by coalesce(district_name, 'Tuman ko''rsatilmagan')
                 order by count(*) desc
                 limit 12
-                """
+                """,
+                params,
             ).fetchall()]
             room_mix = [dict(row) for row in conn.execute(
                 f"""
@@ -503,14 +526,15 @@ class ListingRepository:
                         case when room_count >= 6 then '6+' else room_count::text end as room_label,
                         case when room_count >= 6 then 6 else room_count end as sort_order
                     from real_estate_listings
-                    where {visible_clause}
+                    {where_sql}
                       and room_count is not null
                 )
                 select room_label, count(*) as total
                 from room_rows
                 group by room_label, sort_order
                 order by sort_order
-                """
+                """,
+                params,
             ).fetchall()]
             area_bands = [dict(row) for row in conn.execute(
                 f"""
@@ -531,7 +555,7 @@ class ListingRepository:
                             else 5
                         end as sort_order
                     from real_estate_listings
-                    where {visible_clause}
+                    {where_sql}
                       and area_m2 is not null
                       and area_m2 > 0
                 )
@@ -539,7 +563,8 @@ class ListingRepository:
                 from banded
                 group by label, sort_order
                 order by sort_order
-                """
+                """,
+                params,
             ).fetchall()]
             usd_price_bands = [dict(row) for row in conn.execute(
                 f"""
@@ -560,7 +585,7 @@ class ListingRepository:
                             else 5
                         end as sort_order
                     from real_estate_listings
-                    where {visible_clause}
+                    {where_sql}
                       and currency_code = 'USD'
                       and price_value is not null
                       and price_value > 0
@@ -569,7 +594,8 @@ class ListingRepository:
                 from banded
                 group by label, sort_order
                 order by sort_order
-                """
+                """,
+                params,
             ).fetchall()]
             price_summary = [dict(row) for row in conn.execute(
                 f"""
@@ -580,13 +606,14 @@ class ListingRepository:
                     percentile_cont(0.5) within group (order by price_value) as median_price,
                     percentile_cont(0.9) within group (order by price_value) as p90_price
                 from real_estate_listings
-                where {visible_clause}
+                {where_sql}
                   and price_value is not null
                   and price_value > 0
                   and currency_code in ('USD', 'UZS')
                 group by coalesce(deal_type, 'unknown'), currency_code
                 order by coalesce(deal_type, 'unknown'), currency_code
-                """
+                """,
+                params,
             ).fetchall()]
             daily_supply = [dict(row) for row in conn.execute(
                 f"""
@@ -604,10 +631,42 @@ class ListingRepository:
                 from days
                 left join real_estate_listings listings
                     on listings.first_seen_at::date = days.day
-                   and ({visible_clause})
+                   and ({VISIBLE_QUALITY_CLAUSE})
                 group by days.day
                 order by days.day
                 """
+            ).fetchall()]
+            trend_rows = [dict(row) for row in conn.execute(
+                f"""
+                with days as (
+                    select generate_series(
+                        current_date - (%(days)s::int - 1) * interval '1 day',
+                        current_date,
+                        interval '1 day'
+                    )::date as day
+                ),
+                filtered as (
+                    select
+                        coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as day,
+                        {trend["value_expression"]} as metric_value
+                    from real_estate_listings
+                    {where_sql}
+                      and currency_code = %(currency_code)s
+                      and price_value is not null
+                      and price_value > 0
+                      {trend["extra_predicate"]}
+                )
+                select
+                    days.day,
+                    to_char(days.day, 'DD.MM') as label,
+                    avg(filtered.metric_value) as avg_value,
+                    count(filtered.metric_value) as listing_count
+                from days
+                left join filtered on filtered.day = days.day
+                group by days.day
+                order by days.day
+                """,
+                {**params, "currency_code": filters.currency_code, "days": filters.days},
             ).fetchall()]
 
         for row in source_mix:
@@ -625,6 +684,8 @@ class ListingRepository:
             row["p90_display"] = self._format_money(row.get("p90_price"), row.get("currency_code"))
 
         return {
+            "filters": filters,
+            "facets": facets,
             "summary": summary,
             "source_mix": _with_percent(source_mix, ("total",)),
             "deal_mix": _with_percent(deal_mix, ("total",)),
@@ -636,6 +697,7 @@ class ListingRepository:
             "usd_price_bands": _with_percent(usd_price_bands, ("total",)),
             "price_summary": price_summary,
             "daily_supply": _with_percent(daily_supply, ("olx_total", "telegram_total")),
+            "price_trend": self._prepare_line_chart(trend_rows, filters, trend["label"]),
         }
 
     def iter_powerbi_rows(self) -> list[dict[str, Any]]:
@@ -682,6 +744,233 @@ class ListingRepository:
             item["source_label"] = self._source_label(item.get("source"), None)
             result.append(item)
         return result
+
+    def _normalize_market_filters(self, filters: MarketInsightFilters) -> MarketInsightFilters:
+        currency_code = filters.currency_code if filters.currency_code in {"USD", "UZS"} else "USD"
+        metric = filters.metric if filters.metric in {"auto", "avg_price", "avg_price_m2"} else "auto"
+        days = min(max(filters.days, 14), 180)
+        return MarketInsightFilters(
+            deal_type=filters.deal_type if filters.deal_type in DEAL_TYPE_FILTERS else "",
+            property_type=filters.property_type.strip(),
+            city=filters.city.strip(),
+            district=filters.district.strip(),
+            currency_code=currency_code,
+            metric=metric,
+            days=days,
+        )
+
+    def _build_market_where_clause(self, filters: MarketInsightFilters) -> tuple[str, dict[str, Any]]:
+        clauses: list[str] = [VISIBLE_QUALITY_CLAUSE]
+        params: dict[str, Any] = {}
+
+        if filters.deal_type:
+            params["market_deal_type"] = filters.deal_type
+            clauses.append("deal_type = %(market_deal_type)s")
+
+        if filters.property_type:
+            params["market_property_type"] = filters.property_type
+            clauses.append("property_type = %(market_property_type)s")
+
+        if filters.city:
+            params["market_city"] = filters.city
+            clauses.append("city_name = %(market_city)s")
+
+        if filters.district:
+            params["market_district"] = filters.district
+            clauses.append("district_name = %(market_district)s")
+
+        return "where " + " and ".join(clauses), params
+
+    def _get_market_facets(self, conn: Any) -> dict[str, list[dict[str, Any]]]:
+        sources = conn.execute(
+            f"""
+            select source as value, count(*) as count
+            from real_estate_listings
+            where {VISIBLE_QUALITY_CLAUSE}
+            group by source
+            order by count(*) desc, source
+            """
+        ).fetchall()
+        properties = conn.execute(
+            f"""
+            select property_type as value, count(*) as count
+            from real_estate_listings
+            where {VISIBLE_QUALITY_CLAUSE}
+              and property_type is not null
+              and property_type <> ''
+            group by property_type
+            order by count(*) desc, property_type
+            """
+        ).fetchall()
+        currencies = conn.execute(
+            f"""
+            select currency_code as value, count(*) as count
+            from real_estate_listings
+            where {VISIBLE_QUALITY_CLAUSE}
+              and currency_code in ('USD', 'UZS')
+              and price_value is not null
+            group by currency_code
+            order by count(*) desc, currency_code
+            """
+        ).fetchall()
+        cities = conn.execute(
+            f"""
+            select city_name as value, count(*) as count
+            from real_estate_listings
+            where {VISIBLE_QUALITY_CLAUSE}
+              and city_name is not null
+              and city_name <> ''
+            group by city_name
+            order by count(*) desc, city_name
+            limit 120
+            """
+        ).fetchall()
+        districts = conn.execute(
+            f"""
+            select district_name as value, count(*) as count
+            from real_estate_listings
+            where {VISIBLE_QUALITY_CLAUSE}
+              and district_name is not null
+              and district_name <> ''
+            group by district_name
+            order by count(*) desc, district_name
+            limit 240
+            """
+        ).fetchall()
+
+        return {
+            "deal_types": [
+                {
+                    "value": key,
+                    "label": config["label"],
+                }
+                for key, config in DEAL_TYPE_FILTERS.items()
+            ],
+            "property_types": [
+                {
+                    "value": row["value"],
+                    "label": self._property_label(row["value"]),
+                    "count": row["count"],
+                }
+                for row in properties
+            ],
+            "currencies": [dict(row) for row in currencies],
+            "cities": [dict(row) for row in cities],
+            "districts": [dict(row) for row in districts],
+            "sources": [
+                {
+                    "value": row["value"],
+                    "label": self._source_label(row["value"], None),
+                    "count": row["count"],
+                }
+                for row in sources
+            ],
+        }
+
+    def _market_trend_sql(self, filters: MarketInsightFilters) -> dict[str, str]:
+        metric = filters.metric
+        if metric == "auto" and filters.deal_type == "rent":
+            metric = "avg_price"
+        elif metric == "auto" and filters.property_type == "apartment":
+            metric = "avg_price_m2"
+        elif metric == "auto":
+            metric = "avg_price"
+
+        if metric == "avg_price_m2":
+            return {
+                "label": "O'rtacha m2 narxi",
+                "value_expression": "price_value / nullif(area_m2, 0)",
+                "extra_predicate": "and area_m2 is not null and area_m2 > 0",
+            }
+
+        return {
+            "label": "O'rtacha narx",
+            "value_expression": "price_value",
+            "extra_predicate": "",
+        }
+
+    def _prepare_line_chart(
+        self,
+        rows: list[dict[str, Any]],
+        filters: MarketInsightFilters,
+        metric_label: str,
+    ) -> dict[str, Any]:
+        width = 760
+        height = 280
+        pad_left = 58
+        pad_right = 20
+        pad_top = 22
+        pad_bottom = 38
+        values = [float(row["avg_value"]) for row in rows if row.get("avg_value") is not None]
+        if not values:
+            return {
+                "metric_label": metric_label,
+                "currency_code": filters.currency_code,
+                "points": [],
+                "polyline": "",
+                "latest_display": "-",
+                "average_display": "-",
+                "y_min_display": "-",
+                "y_max_display": "-",
+                "width": width,
+                "height": height,
+            }
+
+        y_min = min(values)
+        y_max = max(values)
+        if y_min == y_max:
+            y_min = y_min * 0.95
+            y_max = y_max * 1.05 if y_max else 1
+
+        usable_width = width - pad_left - pad_right
+        usable_height = height - pad_top - pad_bottom
+        denominator = max(len(rows) - 1, 1)
+
+        points: list[dict[str, Any]] = []
+        polyline_parts: list[str] = []
+        for index, row in enumerate(rows):
+            raw_value = row.get("avg_value")
+            x = pad_left + (usable_width * index / denominator)
+            if raw_value is None:
+                points.append(
+                    {
+                        "x": round(x, 2),
+                        "y": None,
+                        "label": row["label"],
+                        "display": "-",
+                        "count": int(row.get("listing_count") or 0),
+                        "show_label": index == 0 or index == len(rows) - 1 or index % 7 == 0,
+                    }
+                )
+                continue
+
+            value = float(raw_value)
+            y = pad_top + ((y_max - value) / (y_max - y_min) * usable_height)
+            point = {
+                "x": round(x, 2),
+                "y": round(y, 2),
+                "label": row["label"],
+                "display": self._format_trend_money(value, filters.currency_code, metric_label),
+                "count": int(row.get("listing_count") or 0),
+                "show_label": index == 0 or index == len(rows) - 1 or index % 7 == 0,
+            }
+            points.append(point)
+            polyline_parts.append(f"{point['x']},{point['y']}")
+
+        latest_value = values[-1]
+        average_value = sum(values) / len(values)
+        return {
+            "metric_label": metric_label,
+            "currency_code": filters.currency_code,
+            "points": points,
+            "polyline": " ".join(polyline_parts),
+            "latest_display": self._format_trend_money(latest_value, filters.currency_code, metric_label),
+            "average_display": self._format_trend_money(average_value, filters.currency_code, metric_label),
+            "y_min_display": self._format_trend_money(y_min, filters.currency_code, metric_label),
+            "y_max_display": self._format_trend_money(y_max, filters.currency_code, metric_label),
+            "width": width,
+            "height": height,
+        }
 
     def _build_where_clause(self, filters: ListingFilters) -> tuple[str, dict[str, Any]]:
         clauses: list[str] = [VISIBLE_QUALITY_CLAUSE]
@@ -792,6 +1081,14 @@ class ListingRepository:
         if currency_code == "UZS":
             return f"{amount:,.0f} so'm"
         return f"{amount:,.0f}"
+
+    def _format_trend_money(self, value: float, currency_code: str | None, metric_label: str) -> str:
+        suffix = " / m2" if "m2" in metric_label else ""
+        if currency_code == "USD":
+            return f"${value:,.0f}{suffix}"
+        if currency_code == "UZS":
+            return f"{value:,.0f} so'm{suffix}"
+        return f"{value:,.0f}{suffix}"
 
     def _area_display_from_columns(self, row: dict[str, Any]) -> str:
         if row.get("area_m2") not in (None, ""):

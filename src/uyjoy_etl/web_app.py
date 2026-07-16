@@ -18,6 +18,7 @@ from uyjoy_etl.db import Database
 from uyjoy_etl.web_repository import (
     ListingFilters,
     ListingRepository,
+    MarketInsightFilters,
     is_missing_table_error,
     parse_decimal,
 )
@@ -136,9 +137,25 @@ def dashboard(
 def analytics(
     request: Request,
     _: None = Depends(_require_dashboard_auth),
+    deal_type: str = "",
+    property_type: str = "",
+    city: str = "",
+    district: str = "",
+    currency_code: str = "USD",
+    metric: str = "auto",
+    days: int = Query(default=60, ge=14, le=180),
 ) -> HTMLResponse:
+    filters = MarketInsightFilters(
+        deal_type=deal_type.strip(),
+        property_type=property_type.strip(),
+        city=city.strip(),
+        district=district.strip(),
+        currency_code=currency_code.strip().upper() or "USD",
+        metric=metric.strip(),
+        days=days,
+    )
     try:
-        insights = repository.get_market_insights()
+        insights = repository.get_market_insights(filters)
         error_message = None
     except Exception as exc:
         insights = _empty_market_insights()
@@ -149,6 +166,7 @@ def analytics(
         {
             "request": request,
             "insights": insights,
+            "filters": filters,
             "error_message": error_message,
         },
     )
@@ -266,6 +284,15 @@ def _empty_admin_overview() -> dict[str, object]:
 
 def _empty_market_insights() -> dict[str, object]:
     return {
+        "filters": MarketInsightFilters(),
+        "facets": {
+            "deal_types": [],
+            "property_types": [],
+            "currencies": [],
+            "cities": [],
+            "districts": [],
+            "sources": [],
+        },
         "summary": {},
         "source_mix": [],
         "deal_mix": [],
@@ -277,4 +304,16 @@ def _empty_market_insights() -> dict[str, object]:
         "usd_price_bands": [],
         "price_summary": [],
         "daily_supply": [],
+        "price_trend": {
+            "metric_label": "",
+            "currency_code": "",
+            "points": [],
+            "polyline": "",
+            "latest_display": "-",
+            "average_display": "-",
+            "y_min_display": "-",
+            "y_max_display": "-",
+            "width": 760,
+            "height": 280,
+        },
     }
