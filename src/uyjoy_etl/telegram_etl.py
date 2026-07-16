@@ -81,30 +81,24 @@ def scrape_telegram_channels(
         ) as client:
             summaries: list[TelegramScrapeSummary] = []
             for channel in channels:
-                entity = await client.get_entity(channel)
-                channel_record = _channel_record(entity, channel)
+                normalized_channel = _normalize_channel_source(channel)
+                source_username = _username_from_source(normalized_channel)
+                entity = await client.get_entity(normalized_channel)
+                channel_record = _channel_record(entity, normalized_channel)
                 upsert_telegram_channel(database, channel_record)
 
-                inserted = 0
-                updated = 0
-                seen = 0
+                records: list[dict[str, Any]] = []
                 async for message in client.iter_messages(entity, limit=effective_limit):
                     if not message:
                         continue
-                    seen += 1
-                    action = upsert_telegram_post(
-                        database,
-                        _post_record(entity, message),
-                    )
-                    if action == "inserted":
-                        inserted += 1
-                    else:
-                        updated += 1
+                    records.append(_post_record(entity, message, source_username=source_username))
+
+                inserted, updated = upsert_telegram_posts(database, records)
 
                 summaries.append(
                     TelegramScrapeSummary(
                         channel=channel,
-                        posts_seen=seen,
+                        posts_seen=len(records),
                         posts_inserted=inserted,
                         posts_updated=updated,
                     )
@@ -112,7 +106,7 @@ def scrape_telegram_channels(
                 logger.info(
                     "Telegram channel scrape tugadi | channel=%s | seen=%s | inserted=%s | updated=%s",
                     channel,
-                    seen,
+                    len(records),
                     inserted,
                     updated,
                 )
@@ -179,6 +173,53 @@ def upsert_telegram_post(database: Database, record: dict[str, Any]) -> str:
     return str(row["action"])
 
 
+def upsert_telegram_posts(database: Database, records: list[dict[str, Any]]) -> tuple[int, int]:
+    """Postlarni bitta DB connection ichida yozadi; remote Postgres uchun tezroq."""
+
+    if not records:
+        return 0, 0
+
+    inserted = 0
+    updated = 0
+    with database.connect() as conn:
+        for record in records:
+            row = conn.execute(
+                """
+                insert into telegram_posts (
+                    channel_id, message_id, channel_username, channel_title, post_url,
+                    posted_at, text, views, forwards, replies_count, has_media, media_type,
+                    raw_message, first_seen_at, updated_at
+                )
+                values (
+                    %(channel_id)s, %(message_id)s, %(channel_username)s, %(channel_title)s, %(post_url)s,
+                    %(posted_at)s, %(text)s, %(views)s, %(forwards)s, %(replies_count)s, %(has_media)s,
+                    %(media_type)s, %(raw_message)s, now(), now()
+                )
+                on conflict (channel_id, message_id) do update
+                set channel_username = excluded.channel_username,
+                    channel_title = excluded.channel_title,
+                    post_url = excluded.post_url,
+                    posted_at = excluded.posted_at,
+                    text = excluded.text,
+                    views = excluded.views,
+                    forwards = excluded.forwards,
+                    replies_count = excluded.replies_count,
+                    has_media = excluded.has_media,
+                    media_type = excluded.media_type,
+                    raw_message = excluded.raw_message,
+                    updated_at = now()
+                returning case when xmax = 0 then 'inserted' else 'updated' end as action
+                """,
+                {**record, "raw_message": Jsonb(record["raw_message"])},
+            ).fetchone()
+            if row["action"] == "inserted":
+                inserted += 1
+            else:
+                updated += 1
+        conn.commit()
+    return inserted, updated
+
+
 def _channel_record(entity: Any, source: str) -> dict[str, Any]:
     username = getattr(entity, "username", None)
     title = getattr(entity, "title", None)
@@ -191,8 +232,8 @@ def _channel_record(entity: Any, source: str) -> dict[str, Any]:
     }
 
 
-def _post_record(entity: Any, message: Message) -> dict[str, Any]:
-    username = getattr(entity, "username", None)
+def _post_record(entity: Any, message: Message, source_username: str | None = None) -> dict[str, Any]:
+    username = getattr(entity, "username", None) or source_username
     return {
         "channel_id": int(entity.id),
         "message_id": int(message.id),
@@ -217,6 +258,22 @@ def _channel_url(username: str | None, source: str) -> str | None:
         return source
     if source.startswith("@"):
         return f"https://t.me/{source[1:]}"
+    return None
+
+
+def _normalize_channel_source(source: str) -> str:
+    clean_source = source.strip()
+    if clean_source.startswith("t.me/"):
+        return "https://" + clean_source
+    return clean_source
+
+
+def _username_from_source(source: str) -> str | None:
+    clean_source = source.strip().rstrip("/")
+    if clean_source.startswith("https://t.me/"):
+        return clean_source.rsplit("/", 1)[-1]
+    if clean_source.startswith("@"):
+        return clean_source[1:]
     return None
 
 
