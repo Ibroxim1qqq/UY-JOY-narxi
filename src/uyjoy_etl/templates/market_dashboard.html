@@ -200,9 +200,9 @@
                   <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
                   <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
                   <polygon points="70,242 {{ trend.chart.polyline }} 740,242" fill="url(#trendFill{{ loop.index }})"></polygon>
-                  <polyline points="{{ trend.chart.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
-                  {% if trend.chart.moving_average_polyline %}
-                    <polyline points="{{ trend.chart.moving_average_polyline }}" class="market-smooth-line"></polyline>
+                  <path d="{{ trend.chart.path }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></path>
+                  {% if trend.chart.moving_average_path %}
+                    <path d="{{ trend.chart.moving_average_path }}" class="market-smooth-line"></path>
                   {% endif %}
                   {% for point in trend.chart.points %}
                     {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
@@ -213,9 +213,25 @@
                   {% endfor %}
                   {% for point in trend.chart.points %}
                     {% if point.y %}
-                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="10" class="market-hover-point">
-                        <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
-                      </circle>
+                      {% set tooltip_x = -128 %}
+                      {% if point.x < 160 %}
+                        {% set tooltip_x = 10 %}
+                      {% elif point.x > 610 %}
+                        {% set tooltip_x = -266 %}
+                      {% endif %}
+                      {% set tooltip_y = -84 %}
+                      {% if point.y < 96 %}
+                        {% set tooltip_y = 16 %}
+                      {% endif %}
+                      <g class="market-tooltip-anchor" transform="translate({{ point.x }}, {{ point.y }})">
+                        <circle cx="0" cy="0" r="8" class="market-hover-point" aria-label="{{ point.label }} {{ point.display }} {{ point.count }} ta e'lon"></circle>
+                        <g class="market-chart-tooltip" transform="translate({{ tooltip_x }}, {{ tooltip_y }})">
+                          <rect x="0" y="0" width="256" height="74" rx="10"></rect>
+                          <text x="12" y="23">{{ point.label }} | {{ point.display }}</text>
+                          <text x="12" y="46">Haftalik avg: {{ point.moving_display }}</text>
+                          <text x="12" y="65">{{ point.count }} ta e'lon asosida</text>
+                        </g>
+                      </g>
                     {% endif %}
                   {% endfor %}
                 </svg>
@@ -233,9 +249,9 @@
                   <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
                   <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
                   <polygon points="70,242 {{ insights.price_trend.polyline }} 740,242" fill="url(#fallbackFill{{ loop.index }})"></polygon>
-                  <polyline points="{{ insights.price_trend.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
-                  {% if insights.price_trend.moving_average_polyline %}
-                    <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="market-smooth-line"></polyline>
+                  <path d="{{ insights.price_trend.path }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></path>
+                  {% if insights.price_trend.moving_average_path %}
+                    <path d="{{ insights.price_trend.moving_average_path }}" class="market-smooth-line"></path>
                   {% endif %}
                   {% for point in insights.price_trend.points %}
                     {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
@@ -246,9 +262,25 @@
                   {% endfor %}
                   {% for point in insights.price_trend.points %}
                     {% if point.y %}
-                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="10" class="market-hover-point">
-                        <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
-                      </circle>
+                      {% set tooltip_x = -128 %}
+                      {% if point.x < 160 %}
+                        {% set tooltip_x = 10 %}
+                      {% elif point.x > 610 %}
+                        {% set tooltip_x = -266 %}
+                      {% endif %}
+                      {% set tooltip_y = -84 %}
+                      {% if point.y < 96 %}
+                        {% set tooltip_y = 16 %}
+                      {% endif %}
+                      <g class="market-tooltip-anchor" transform="translate({{ point.x }}, {{ point.y }})">
+                        <circle cx="0" cy="0" r="8" class="market-hover-point" aria-label="{{ point.label }} {{ point.display }} {{ point.count }} ta e'lon"></circle>
+                        <g class="market-chart-tooltip" transform="translate({{ tooltip_x }}, {{ tooltip_y }})">
+                          <rect x="0" y="0" width="256" height="74" rx="10"></rect>
+                          <text x="12" y="23">{{ point.label }} | {{ point.display }}</text>
+                          <text x="12" y="46">Haftalik avg: {{ point.moving_display }}</text>
+                          <text x="12" y="65">{{ point.count }} ta e'lon asosida</text>
+                        </g>
+                      </g>
                     {% endif %}
                   {% endfor %}
                 </svg>

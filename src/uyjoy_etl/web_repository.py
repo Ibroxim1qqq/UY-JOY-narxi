@@ -1269,7 +1269,9 @@ class ListingRepository:
                 "currency_code": filters.currency_code,
                 "points": [],
                 "polyline": "",
+                "path": "",
                 "moving_average_polyline": "",
+                "moving_average_path": "",
                 "latest_display": "-",
                 "average_display": "-",
                 "moving_average_latest_display": "-",
@@ -1296,6 +1298,8 @@ class ListingRepository:
         points: list[dict[str, Any]] = []
         polyline_parts: list[str] = []
         moving_polyline_parts: list[str] = []
+        line_coordinates: list[tuple[float, float]] = []
+        moving_coordinates: list[tuple[float, float]] = []
         for index, row in enumerate(rows):
             raw_value = row.get("avg_value")
             x = pad_left + (usable_width * index / denominator)
@@ -1305,7 +1309,10 @@ class ListingRepository:
             if moving_average is not None:
                 moving_y = pad_top + ((y_max - moving_average) / (y_max - y_min) * usable_height)
                 moving_display = self._format_trend_money(moving_average, filters.currency_code, metric_label)
-                moving_polyline_parts.append(f"{round(x, 2)},{round(moving_y, 2)}")
+                moving_x = round(x, 2)
+                moving_y_rounded = round(moving_y, 2)
+                moving_polyline_parts.append(f"{moving_x},{moving_y_rounded}")
+                moving_coordinates.append((moving_x, moving_y_rounded))
 
             if raw_value is None:
                 points.append(
@@ -1338,6 +1345,7 @@ class ListingRepository:
             }
             points.append(point)
             polyline_parts.append(f"{point['x']},{point['y']}")
+            line_coordinates.append((point["x"], point["y"]))
 
         latest_value = values[-1]
         average_value = sum(values) / len(values)
@@ -1348,7 +1356,9 @@ class ListingRepository:
             "currency_code": filters.currency_code,
             "points": points,
             "polyline": " ".join(polyline_parts),
+            "path": self._smooth_svg_path(line_coordinates),
             "moving_average_polyline": " ".join(moving_polyline_parts),
+            "moving_average_path": self._smooth_svg_path(moving_coordinates),
             "latest_display": self._format_trend_money(latest_value, filters.currency_code, metric_label),
             "average_display": self._format_trend_money(average_value, filters.currency_code, metric_label),
             "moving_average_latest_display": self._format_trend_money(
@@ -1367,6 +1377,32 @@ class ListingRepository:
             "width": width,
             "height": height,
         }
+
+    def _smooth_svg_path(self, coordinates: list[tuple[float, float]]) -> str:
+        """Nuqtalardan o'tadigan yumshoq SVG path yaratadi."""
+
+        if not coordinates:
+            return ""
+        if len(coordinates) == 1:
+            x, y = coordinates[0]
+            return f"M {x:g} {y:g}"
+        if len(coordinates) == 2:
+            (x1, y1), (x2, y2) = coordinates
+            return f"M {x1:g} {y1:g} L {x2:g} {y2:g}"
+
+        commands = [f"M {coordinates[0][0]:g} {coordinates[0][1]:g}"]
+        smoothing = 0.14
+        for index in range(len(coordinates) - 1):
+            x0, y0 = coordinates[index - 1] if index > 0 else coordinates[index]
+            x1, y1 = coordinates[index]
+            x2, y2 = coordinates[index + 1]
+            x3, y3 = coordinates[index + 2] if index + 2 < len(coordinates) else coordinates[index + 1]
+            cp1_x = x1 + (x2 - x0) * smoothing
+            cp1_y = y1 + (y2 - y0) * smoothing
+            cp2_x = x2 - (x3 - x1) * smoothing
+            cp2_y = y2 - (y3 - y1) * smoothing
+            commands.append(f"C {cp1_x:g} {cp1_y:g} {cp2_x:g} {cp2_y:g} {x2:g} {y2:g}")
+        return " ".join(commands)
 
     def _moving_average_value(
         self,

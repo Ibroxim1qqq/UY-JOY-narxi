@@ -111,6 +111,14 @@ class WebRepositoryTest(unittest.TestCase):
         self.assertIn("is_listing_anomaly", capture.sql)
         self.assertIn("room_key", capture.sql)
 
+    def test_smooth_svg_path_uses_curves_for_three_or_more_points(self) -> None:
+        repository = ListingRepository(database=None)  # type: ignore[arg-type]
+
+        path = repository._smooth_svg_path([(70, 120), (120, 90), (170, 130)])
+
+        self.assertTrue(path.startswith("M 70 120"))
+        self.assertIn(" C ", path)
+
 
 if __name__ == "__main__":
     unittest.main()

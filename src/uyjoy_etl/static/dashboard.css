@@ -1495,6 +1495,40 @@ pre {
   stroke: transparent;
 }
 
+.market-tooltip-anchor {
+  outline: none;
+}
+
+.market-chart-tooltip {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.market-tooltip-anchor:hover .market-chart-tooltip,
+.market-tooltip-anchor:focus-within .market-chart-tooltip {
+  opacity: 1;
+}
+
+.market-chart-tooltip rect {
+  fill: #111827;
+  stroke: rgba(255, 255, 255, 0.2);
+  stroke-width: 1;
+  filter: drop-shadow(0 12px 18px rgba(15, 23, 42, 0.22));
+}
+
+.market-chart-tooltip text {
+  fill: #fff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.market-chart-tooltip text:nth-of-type(2),
+.market-chart-tooltip text:nth-of-type(3) {
+  fill: #dbeafe;
+  font-weight: 700;
+}
+
 .trend-badge {
   display: inline-flex;
   align-items: center;
