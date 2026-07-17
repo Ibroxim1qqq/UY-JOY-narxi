@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Uyjoy bozori dashboard | UY-JOY</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=market-dashboard-20260717">
 </head>
 <body class="market-dashboard-body">
@@ -74,6 +75,18 @@
             {% for item in insights.facets.districts %}
               <option value="{{ item.value }}" {% if insights.filters.district == item.value %}selected{% endif %}>
                 {{ item.value }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Xona soni</span>
+          <select name="rooms">
+            <option value="">Barchasi</option>
+            {% for item in insights.facets.rooms %}
+              <option value="{{ item.value }}" {% if insights.filters.rooms == item.value %}selected{% endif %}>
+                {{ item.label }} xona
               </option>
             {% endfor %}
           </select>
@@ -265,20 +278,22 @@
 
         <div class="market-card map-card">
           <div class="market-section-heading">
-            <h2>Faollik xaritasi</h2>
-            <span>Top tumanlar nisbati</span>
+            <h2>Haqiqiy xarita</h2>
+            <span>Koordinatali e'lonlar</span>
           </div>
-          <div class="district-map">
-            {% for district in insights.top_districts[:12] %}
-              <span class="map-cell map-cell-{{ loop.index }}" title="{{ district.district_name }}: {{ district.total }}">
-                {{ district.total }}
-              </span>
-            {% endfor %}
+          <div
+            id="marketMap"
+            class="real-market-map"
+            data-center-lat="{{ insights.map.center_lat }}"
+            data-center-lon="{{ insights.map.center_lon }}"
+            data-zoom="{{ insights.map.zoom }}"
+          >
           </div>
+          <script type="application/json" id="marketMapPoints">{{ insights.map.points|tojson }}</script>
           <div class="map-legend">
-            <span><i class="hot"></i>Yuqori</span>
+            <span><i class="hot"></i>Ko'p e'lon</span>
             <span><i class="mid"></i>O'rta</span>
-            <span><i class="low"></i>Past</span>
+            <span><i class="low"></i>Kam</span>
           </div>
         </div>
 
@@ -355,5 +370,47 @@
       </section>
     </section>
   </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    (function () {
+      const mapEl = document.getElementById("marketMap");
+      const dataEl = document.getElementById("marketMapPoints");
+      if (!mapEl || !dataEl || !window.L) {
+        return;
+      }
+
+      const points = JSON.parse(dataEl.textContent || "[]");
+      const center = [
+        Number(mapEl.dataset.centerLat || 41.2995),
+        Number(mapEl.dataset.centerLon || 69.2401),
+      ];
+      const map = L.map(mapEl, { scrollWheelZoom: false }).setView(center, Number(mapEl.dataset.zoom || 11));
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 18,
+        attribution: "&copy; OpenStreetMap",
+      }).addTo(map);
+
+      const bounds = [];
+      points.forEach((point) => {
+        const radius = Math.max(7, Math.min(28, Math.sqrt(point.total) * 0.55));
+        const marker = L.circleMarker([point.lat, point.lon], {
+          radius,
+          color: "#ffffff",
+          weight: 2,
+          fillColor: point.total > 3000 ? "#ff6b4a" : point.total > 1200 ? "#f4c542" : "#50b96b",
+          fillOpacity: 0.82,
+        }).addTo(map);
+        marker.bindPopup(
+          `<strong>${point.label}</strong><br>Jami: ${point.total}<br>Sotuv: ${point.sale_total}<br>Ijara: ${point.rent_total}`
+        );
+        bounds.push([point.lat, point.lon]);
+      });
+
+      if (bounds.length > 1) {
+        map.fitBounds(bounds, { padding: [18, 18] });
+      }
+      window.setTimeout(() => map.invalidateSize(), 150);
+    })();
+  </script>
 </body>
 </html>

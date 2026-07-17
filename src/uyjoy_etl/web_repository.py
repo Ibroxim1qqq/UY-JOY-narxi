@@ -58,6 +58,7 @@ class MarketInsightFilters:
     property_type: str = ""
     city: str = ""
     district: str = ""
+    rooms: str = ""
     currency_code: str = "USD"
     metric: str = "auto"
     days: int = 60
@@ -524,6 +525,25 @@ class ListingRepository:
                 """,
                 params,
             ).fetchall()]
+            map_points = [dict(row) for row in conn.execute(
+                f"""
+                select
+                    coalesce(nullif(district_name, ''), nullif(city_name, ''), 'Noma''lum') as label,
+                    avg(latitude)::float as lat,
+                    avg(longitude)::float as lon,
+                    count(*) as total,
+                    count(*) filter (where deal_type = 'sale') as sale_total,
+                    count(*) filter (where deal_type = 'rent') as rent_total
+                from real_estate_listings
+                {where_sql}
+                  and latitude is not null
+                  and longitude is not null
+                group by coalesce(nullif(district_name, ''), nullif(city_name, ''), 'Noma''lum')
+                order by count(*) desc
+                limit 60
+                """,
+                params,
+            ).fetchall()]
             room_mix = [dict(row) for row in conn.execute(
                 f"""
                 with room_rows as (
@@ -708,6 +728,7 @@ class ListingRepository:
             "property_mix": _with_percent(property_mix, ("total",)),
             "top_cities": _with_percent(top_cities, ("total",)),
             "top_districts": _with_percent(top_districts, ("total", "sale_total", "rent_total")),
+            "map": self._prepare_market_map(map_points, filters),
             "room_mix": _with_percent(room_mix, ("total",)),
             "area_bands": _with_percent(area_bands, ("total",)),
             "usd_price_bands": _with_percent(usd_price_bands, ("total",)),
@@ -776,6 +797,7 @@ class ListingRepository:
             property_type=filters.property_type.strip(),
             city=filters.city.strip(),
             district=filters.district.strip(),
+            rooms=filters.rooms if filters.rooms == "7plus" or filters.rooms.isdigit() else "",
             currency_code=currency_code,
             metric=metric,
             days=days,
@@ -800,6 +822,12 @@ class ListingRepository:
         if filters.district:
             params["market_district"] = filters.district
             clauses.append("district_name = %(market_district)s")
+
+        if filters.rooms == "7plus":
+            clauses.append("room_count >= 7")
+        elif filters.rooms.isdigit():
+            params["market_rooms"] = int(filters.rooms)
+            clauses.append("room_count = %(market_rooms)s")
 
         return "where " + " and ".join(clauses), params
 
@@ -852,6 +880,22 @@ class ListingRepository:
             limit 240
             """
         ).fetchall()
+        rooms = conn.execute(
+            f"""
+            with room_rows as (
+                select
+                    case when room_count >= 7 then '7plus' else room_count::text end as value,
+                    case when room_count >= 7 then 7 else room_count end as sort_order
+                from real_estate_listings
+                where {VISIBLE_QUALITY_CLAUSE}
+                  and room_count is not null
+            )
+            select value, count(*) as count
+            from room_rows
+            group by value, sort_order
+            order by sort_order
+            """
+        ).fetchall()
 
         return {
             "deal_types": [
@@ -872,6 +916,14 @@ class ListingRepository:
             "currencies": currency_facets or [],
             "cities": [dict(row) for row in cities],
             "districts": [dict(row) for row in districts],
+            "rooms": [
+                {
+                    "value": row["value"],
+                    "label": "7+" if row["value"] == "7plus" else row["value"],
+                    "count": row["count"],
+                }
+                for row in rooms
+            ],
             "sources": [
                 {
                     "value": row["value"],
@@ -966,6 +1018,7 @@ class ListingRepository:
             property_type=property_type,
             city=base_filters.city,
             district=base_filters.district,
+            rooms=base_filters.rooms,
             currency_code=base_filters.currency_code,
             metric=metric,
             days=base_filters.days,
@@ -989,6 +1042,39 @@ class ListingRepository:
             "accent": accent,
             "filters": segment_filters,
             "chart": chart,
+        }
+
+    def _prepare_market_map(
+        self,
+        points: list[dict[str, Any]],
+        filters: MarketInsightFilters,
+    ) -> dict[str, Any]:
+        clean_points = [
+            {
+                "label": row.get("label") or "Noma'lum",
+                "lat": float(row["lat"]),
+                "lon": float(row["lon"]),
+                "total": int(row.get("total") or 0),
+                "sale_total": int(row.get("sale_total") or 0),
+                "rent_total": int(row.get("rent_total") or 0),
+            }
+            for row in points
+            if row.get("lat") is not None and row.get("lon") is not None
+        ]
+        if clean_points:
+            center_lat = sum(point["lat"] for point in clean_points) / len(clean_points)
+            center_lon = sum(point["lon"] for point in clean_points) / len(clean_points)
+            zoom = 12 if filters.district else 11 if filters.city else 6
+        elif filters.city == "Ташкент":
+            center_lat, center_lon, zoom = 41.2995, 69.2401, 11
+        else:
+            center_lat, center_lon, zoom = 41.3111, 64.2797, 6
+
+        return {
+            "points": clean_points,
+            "center_lat": round(center_lat, 6),
+            "center_lon": round(center_lon, 6),
+            "zoom": zoom,
         }
 
     def _query_market_trend_rows(
