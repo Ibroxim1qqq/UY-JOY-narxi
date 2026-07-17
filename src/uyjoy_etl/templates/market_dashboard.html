@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Uyjoy bozori dashboard | UY-JOY</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='dashboard.css') }}?v=market-dashboard-20260717">
+</head>
+<body class="market-dashboard-body">
+  {% if error_message %}
+    <section class="notice">
+      <strong>Dashboard hozir ko'rinmayapti.</strong>
+      <span>{{ error_message }}</span>
+    </section>
+  {% endif %}
+
+  <main class="market-dashboard-shell">
+    <aside class="market-sidebar" aria-label="Dashboard filterlari">
+      <div class="market-brand">
+        <div>
+          <strong>UYJOY BOZORI</strong>
+          <span>DASHBOARD</span>
+        </div>
+        <a href="/" title="E'lonlar sahifasi">HOME</a>
+      </div>
+
+      <form method="get" class="market-filter-form">
+        <div class="market-filter-title">
+          <strong>FILTERLAR</strong>
+          <a href="/market-dashboard">Qayta tiklash</a>
+        </div>
+
+        <label>
+          <span>Davr</span>
+          <select name="days">
+            {% for day_count in [30, 60, 90, 180] %}
+              <option value="{{ day_count }}" {% if insights.filters.days == day_count %}selected{% endif %}>
+                Oxirgi {{ day_count }} kun
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <div class="market-check-card">
+          <span>Bitim turi</span>
+          <label><input type="radio" name="deal_type" value="" {% if not insights.filters.deal_type %}checked{% endif %}> Barchasi</label>
+          <label><input type="radio" name="deal_type" value="sale" {% if insights.filters.deal_type == "sale" %}checked{% endif %}> Sotuv</label>
+          <label><input type="radio" name="deal_type" value="rent" {% if insights.filters.deal_type == "rent" %}checked{% endif %}> Ijara</label>
+        </div>
+
+        <div class="market-check-card">
+          <span>Uy turi</span>
+          <label><input type="radio" name="property_type" value="" {% if not insights.filters.property_type %}checked{% endif %}> Barchasi</label>
+          <label><input type="radio" name="property_type" value="apartment" {% if insights.filters.property_type == "apartment" %}checked{% endif %}> Kvartira</label>
+          <label><input type="radio" name="property_type" value="house" {% if insights.filters.property_type == "house" %}checked{% endif %}> Hovli</label>
+        </div>
+
+        <label>
+          <span>Shahar / tuman</span>
+          <select name="city">
+            <option value="">Barchasi</option>
+            {% for item in insights.facets.cities %}
+              <option value="{{ item.value }}" {% if insights.filters.city == item.value %}selected{% endif %}>
+                {{ item.value }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Tuman</span>
+          <select name="district">
+            <option value="">Barchasi</option>
+            {% for item in insights.facets.districts %}
+              <option value="{{ item.value }}" {% if insights.filters.district == item.value %}selected{% endif %}>
+                {{ item.value }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label>
+          <span>Valyuta</span>
+          <select name="currency_code">
+            {% for item in insights.facets.currencies %}
+              <option value="{{ item.value }}" {% if insights.filters.currency_code == item.value %}selected{% endif %}>
+                {{ item.value }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <input type="hidden" name="metric" value="{{ insights.filters.metric }}">
+        <button type="submit" class="market-apply">Qo'llash</button>
+      </form>
+    </aside>
+
+    <section class="market-content" aria-label="Uyjoy bozor ko'rsatkichlari">
+      <section class="market-kpis" aria-label="Asosiy KPI">
+        <div class="market-kpi kpi-total">
+          <i>J</i>
+          <div>
+            <span>Jami e'lonlar soni</span>
+            <strong>{{ insights.summary.total or 0 }}</strong>
+            <em>Clean baza</em>
+          </div>
+        </div>
+        <div class="market-kpi kpi-sale">
+          <i>S</i>
+          <div>
+            <span>Sotuv e'lonlari</span>
+            <strong>{{ insights.summary.sale_total or 0 }}</strong>
+            <em>Narx va manzil bor</em>
+          </div>
+        </div>
+        <div class="market-kpi kpi-rent">
+          <i>I</i>
+          <div>
+            <span>Ijara e'lonlari</span>
+            <strong>{{ insights.summary.rent_total or 0 }}</strong>
+            <em>Joriy kesim</em>
+          </div>
+        </div>
+        <div class="market-kpi kpi-flat">
+          <i>K</i>
+          <div>
+            <span>Kvartira e'lonlari</span>
+            <strong>{{ insights.summary.apartment_total or 0 }}</strong>
+            <em>Xona soni bor</em>
+          </div>
+        </div>
+        <div class="market-kpi kpi-house">
+          <i>H</i>
+          <div>
+            <span>Hovli e'lonlari</span>
+            <strong>{{ insights.summary.house_total or 0 }}</strong>
+            <em>Manzil bilan</em>
+          </div>
+        </div>
+      </section>
+
+      <section class="market-card market-trend-card">
+        <div class="market-section-heading">
+          <h2>Narx (o'rtacha) trendi bo'yicha dinamikasi</h2>
+          <span>{{ insights.filters.days }} kun, {{ insights.price_trend.currency_code }}</span>
+        </div>
+        <div class="market-mini-charts">
+          <div class="market-mini-chart">
+            <div class="mini-chart-title">
+              <b>Kvartira (sotuv)</b>
+              <span>{{ insights.sale_apartment_m2_trend.metric_label }}</span>
+            </div>
+            {% if insights.sale_apartment_m2_trend.points|length > 1 %}
+              <svg viewBox="0 0 {{ insights.sale_apartment_m2_trend.width }} {{ insights.sale_apartment_m2_trend.height }}" aria-label="Kvartira sotuv trendi">
+                <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
+                <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+                <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+                {% if insights.sale_apartment_m2_trend.moving_average_polyline %}
+                  <polyline points="{{ insights.sale_apartment_m2_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
+                {% endif %}
+                <polyline points="{{ insights.sale_apartment_m2_trend.polyline }}" class="price-line"></polyline>
+              </svg>
+            {% elif insights.price_trend.points %}
+              <svg viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" aria-label="Umumiy bozor trendi">
+                <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
+                <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+                <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+                {% if insights.price_trend.moving_average_polyline %}
+                  <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
+                {% endif %}
+                <polyline points="{{ insights.price_trend.polyline }}" class="price-line"></polyline>
+              </svg>
+            {% else %}
+              <p class="empty-mini">Data yetarli emas.</p>
+            {% endif %}
+          </div>
+
+          <div class="market-mini-chart">
+            <div class="mini-chart-title">
+              <b>Bozor narxi</b>
+              <span>{{ insights.price_trend.metric_label }}</span>
+            </div>
+            {% if insights.price_trend.points %}
+              <svg viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" aria-label="Bozor narxi trendi">
+                <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
+                <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+                <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+                {% if insights.price_trend.moving_average_polyline %}
+                  <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
+                {% endif %}
+                <polyline points="{{ insights.price_trend.polyline }}" class="price-line"></polyline>
+              </svg>
+            {% else %}
+              <p class="empty-mini">Data yetarli emas.</p>
+            {% endif %}
+          </div>
+
+          <div class="market-mini-chart">
+            <div class="mini-chart-title">
+              <b>OLX oqimi</b>
+              <span>14 kunlik yangi taklif</span>
+            </div>
+            <div class="micro-bars">
+              {% for day in insights.daily_supply %}
+                <i style="height: {{ day.olx_total_pct }}%" title="{{ day.label }} OLX: {{ day.olx_total }}"></i>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="market-mini-chart">
+            <div class="mini-chart-title">
+              <b>Telegram oqimi</b>
+              <span>14 kunlik yangi taklif</span>
+            </div>
+            <div class="micro-bars micro-bars-blue">
+              {% for day in insights.daily_supply %}
+                <i style="height: {{ day.telegram_total_pct }}%" title="{{ day.label }} Telegram: {{ day.telegram_total }}"></i>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="market-grid-main">
+        <div class="market-card price-now">
+          <div class="market-section-heading">
+            <h2>O'rtacha narxlar (hozirgi davr)</h2>
+            <span>Median va P90 benchmark</span>
+          </div>
+          <div class="price-tiles">
+            {% for item in insights.price_summary %}
+              {% if loop.index <= 4 %}
+                <div class="price-tile">
+                  <small>{{ item.deal_label }} - {{ item.currency_code }}</small>
+                  <strong>{{ item.median_display }}</strong>
+                  <span>P90: {{ item.p90_display }}</span>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="market-card district-table-card">
+          <div class="market-section-heading">
+            <h2>Tumanlar kesimida faollik</h2>
+            <span>Sotuv / ijara sonlari</span>
+          </div>
+          <div class="market-table-wrap">
+            <table class="market-table">
+              <thead>
+                <tr>
+                  <th>Tuman</th>
+                  <th>Sotuv</th>
+                  <th>Ijara</th>
+                  <th>Jami</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for district in insights.top_districts[:8] %}
+                  <tr>
+                    <td>{{ district.district_name }}</td>
+                    <td>{{ district.sale_total }}</td>
+                    <td>{{ district.rent_total }}</td>
+                    <td>{{ district.total }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="market-card map-card">
+          <div class="market-section-heading">
+            <h2>Faollik xaritasi</h2>
+            <span>Top tumanlar nisbati</span>
+          </div>
+          <div class="district-map">
+            {% for district in insights.top_districts[:12] %}
+              <span class="map-cell map-cell-{{ loop.index }}" title="{{ district.district_name }}: {{ district.total }}">
+                {{ district.total }}
+              </span>
+            {% endfor %}
+          </div>
+          <div class="map-legend">
+            <span><i class="hot"></i>Yuqori</span>
+            <span><i class="mid"></i>O'rta</span>
+            <span><i class="low"></i>Past</span>
+          </div>
+        </div>
+
+        <div class="market-card donut-card">
+          <div class="market-section-heading">
+            <h2>E'lonlar taqsimoti</h2>
+            <span>Obyekt turi</span>
+          </div>
+          <div class="donut-pair">
+            {% for item in insights.property_mix[:2] %}
+              <div class="market-donut" style="--pct: {{ item.total_pct }}%">
+                <div>
+                  <strong>{{ item.total }}</strong>
+                  <span>{{ item.label }}</span>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="market-card area-card">
+          <div class="market-section-heading">
+            <h2>Maydon taqsimoti</h2>
+            <span>m2 segmentlari</span>
+          </div>
+          <div class="market-column-chart">
+            {% for item in insights.area_bands %}
+              <div>
+                <i style="height: {{ item.total_pct }}%"></i>
+                <strong>{{ item.total }}</strong>
+                <span>{{ item.label }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="market-card top-address-card">
+          <div class="market-section-heading">
+            <h2>Top shaharlar bo'yicha narx</h2>
+            <span>Median USD / UZS</span>
+          </div>
+          <div class="market-table-wrap">
+            <table class="market-table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Shahar</th>
+                  <th>Jami</th>
+                  <th>USD</th>
+                  <th>UZS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for city in insights.top_cities[:5] %}
+                  <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ city.city_name }}</td>
+                    <td>{{ city.total }}</td>
+                    <td>{{ city.median_usd_display }}</td>
+                    <td>{{ city.median_uzs_display }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="insight-strip">
+        <div><b>Kvartira sotuv narxlari</b><span>{{ insights.sale_apartment_m2_trend.average_display }}</span></div>
+        <div><b>Oxirgi trend qiymati</b><span>{{ insights.price_trend.latest_display }}</span></div>
+        <div><b>5 kunlik avg</b><span>{{ insights.price_trend.moving_average_latest_display }}</span></div>
+        <div><b>Anomaliya olib tashlandi</b><span>{{ insights.price_trend.anomaly_total }}</span></div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
