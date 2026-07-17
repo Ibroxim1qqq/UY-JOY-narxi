@@ -26,7 +26,7 @@
     </section>
   {% endif %}
 
-  <main class="page-shell">
+  <main class="page-shell analytics-page">
     <section class="summary-grid" aria-label="Bozor KPI">
       <div class="metric">
         <span>Clean e'lonlar</span>
@@ -41,12 +41,27 @@
         <strong>{{ insights.summary.rent_total or 0 }}</strong>
       </div>
       <div class="metric">
+        <span>Kvartira</span>
+        <strong>{{ insights.summary.apartment_total or 0 }}</strong>
+      </div>
+      <div class="metric">
+        <span>Uy / hovli</span>
+        <strong>{{ insights.summary.house_total or 0 }}</strong>
+      </div>
+      <div class="metric">
         <span>Narxi bor e'lonlar</span>
         <strong>{{ insights.summary.priced_total or 0 }}</strong>
       </div>
     </section>
 
-    <section class="toolbar" aria-label="Analytics filterlari">
+    <section class="toolbar analytics-filter-panel" aria-label="Analytics filterlari">
+      <div class="filter-panel-heading">
+        <div>
+          <h2>Filterlar</h2>
+          <span>Bozor kesimini tanlang</span>
+        </div>
+        <a href="/analytics">Qayta tiklash</a>
+      </div>
       <form method="get" class="search-form analytics-filter-form">
         <label>
           <span>Turi</span>

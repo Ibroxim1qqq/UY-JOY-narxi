@@ -444,6 +444,8 @@ class ListingRepository:
                         count(*) as total,
                         count(*) filter (where deal_type = 'sale') as sale_total,
                         count(*) filter (where deal_type = 'rent') as rent_total,
+                        count(*) filter (where property_type = 'apartment') as apartment_total,
+                        count(*) filter (where property_type = 'house') as house_total,
                         count(*) filter (where source = 'olx') as olx_total,
                         count(*) filter (where source = 'telegram') as telegram_total,
                         count(*) filter (where price_value is not null) as priced_total,
