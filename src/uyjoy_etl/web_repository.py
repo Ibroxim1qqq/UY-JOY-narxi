@@ -431,9 +431,11 @@ class ListingRepository:
         filters = filters or MarketInsightFilters()
         filters = self._normalize_market_filters(filters)
         where_sql, params = self._build_market_where_clause(filters)
-        trend = self._market_trend_sql(filters)
         with self._database.connect() as conn:
-            facets = self._get_market_facets(conn)
+            currency_facets = self._get_market_currency_facets(conn, where_sql, params)
+            filters = self._with_available_currency(filters, currency_facets)
+            trend = self._market_trend_sql(filters)
+            facets = self._get_market_facets(conn, currency_facets)
             summary = dict(
                 conn.execute(
                     f"""
@@ -781,7 +783,11 @@ class ListingRepository:
 
         return "where " + " and ".join(clauses), params
 
-    def _get_market_facets(self, conn: Any) -> dict[str, list[dict[str, Any]]]:
+    def _get_market_facets(
+        self,
+        conn: Any,
+        currency_facets: list[dict[str, Any]] | None = None,
+    ) -> dict[str, list[dict[str, Any]]]:
         sources = conn.execute(
             f"""
             select source as value, count(*) as count
@@ -800,17 +806,6 @@ class ListingRepository:
               and property_type <> ''
             group by property_type
             order by count(*) desc, property_type
-            """
-        ).fetchall()
-        currencies = conn.execute(
-            f"""
-            select currency_code as value, count(*) as count
-            from real_estate_listings
-            where {VISIBLE_QUALITY_CLAUSE}
-              and currency_code in ('USD', 'UZS')
-              and price_value is not null
-            group by currency_code
-            order by count(*) desc, currency_code
             """
         ).fetchall()
         cities = conn.execute(
@@ -854,7 +849,7 @@ class ListingRepository:
                 }
                 for row in properties
             ],
-            "currencies": [dict(row) for row in currencies],
+            "currencies": currency_facets or [],
             "cities": [dict(row) for row in cities],
             "districts": [dict(row) for row in districts],
             "sources": [
@@ -866,6 +861,49 @@ class ListingRepository:
                 for row in sources
             ],
         }
+
+    def _get_market_currency_facets(
+        self,
+        conn: Any,
+        where_sql: str,
+        params: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            f"""
+            select currency_code as value, count(*) as count
+            from real_estate_listings
+            {where_sql}
+              and currency_code in ('USD', 'UZS')
+              and price_value is not null
+              and price_value > 0
+            group by currency_code
+            order by count(*) desc, currency_code
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _with_available_currency(
+        self,
+        filters: MarketInsightFilters,
+        currency_facets: list[dict[str, Any]],
+    ) -> MarketInsightFilters:
+        if not currency_facets:
+            return filters
+
+        available = {row["value"] for row in currency_facets}
+        if filters.currency_code in available:
+            return filters
+
+        return MarketInsightFilters(
+            deal_type=filters.deal_type,
+            property_type=filters.property_type,
+            city=filters.city,
+            district=filters.district,
+            currency_code=str(currency_facets[0]["value"]),
+            metric=filters.metric,
+            days=filters.days,
+        )
 
     def _market_trend_sql(self, filters: MarketInsightFilters) -> dict[str, str]:
         metric = filters.metric
