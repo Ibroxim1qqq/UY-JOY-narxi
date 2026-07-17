@@ -1102,13 +1102,58 @@ class ListingRepository:
                     coalesce(district_name, '') as district_key,
                     coalesce(property_type, '') as property_key,
                     coalesce(deal_type, '') as deal_key,
-                    coalesce(currency_code, '') as currency_key
+                    coalesce(currency_code, '') as currency_key,
+                    coalesce(room_count::text, '') as room_key
                 from real_estate_listings
                 {where_sql}
                   and currency_code = %(currency_code)s
                   and price_value is not null
                   and price_value > 0
                   {trend["extra_predicate"]}
+            ),
+            segment_stats as (
+                select
+                    city_key,
+                    district_key,
+                    property_key,
+                    deal_key,
+                    currency_key,
+                    room_key,
+                    count(*) as sample_count,
+                    percentile_cont(0.25) within group (order by metric_value) as q1_value,
+                    percentile_cont(0.50) within group (order by metric_value) as median_value,
+                    percentile_cont(0.75) within group (order by metric_value) as q3_value
+                from filtered
+                group by city_key, district_key, property_key, deal_key, currency_key, room_key
+            ),
+            listing_scored as (
+                select
+                    filtered.*,
+                    case
+                        when stats.sample_count >= 8
+                         and stats.median_value > 0
+                         and (
+                            (
+                                stats.q3_value > stats.q1_value
+                                and (
+                                    filtered.metric_value > stats.q3_value + (stats.q3_value - stats.q1_value) * 1.25
+                                    or filtered.metric_value < greatest(0, stats.q1_value - (stats.q3_value - stats.q1_value) * 1.25)
+                                )
+                            )
+                            or filtered.metric_value > stats.median_value * 2
+                            or filtered.metric_value < stats.median_value / 2
+                         )
+                        then true
+                        else false
+                    end as is_listing_anomaly
+                from filtered
+                join segment_stats stats
+                  on stats.city_key = filtered.city_key
+                 and stats.district_key = filtered.district_key
+                 and stats.property_key = filtered.property_key
+                 and stats.deal_key = filtered.deal_key
+                 and stats.currency_key = filtered.currency_key
+                 and stats.room_key = filtered.room_key
             ),
             daily_segments as (
                 select
@@ -1118,10 +1163,12 @@ class ListingRepository:
                     property_key,
                     deal_key,
                     currency_key,
-                    avg(metric_value) as segment_avg,
-                    count(*) as segment_count
-                from filtered
-                group by day, city_key, district_key, property_key, deal_key, currency_key
+                    room_key,
+                    avg(metric_value) filter (where is_listing_anomaly is false) as segment_avg,
+                    count(*) filter (where is_listing_anomaly is false) as segment_count,
+                    count(*) filter (where is_listing_anomaly) as listing_anomaly_count
+                from listing_scored
+                group by day, city_key, district_key, property_key, deal_key, currency_key, room_key
             ),
             with_neighbors as (
                 select
@@ -1134,8 +1181,10 @@ class ListingRepository:
                           and peer.property_key = current.property_key
                           and peer.deal_key = current.deal_key
                           and peer.currency_key = current.currency_key
+                          and peer.room_key = current.room_key
                           and peer.day between current.day - interval '2 days' and current.day + interval '2 days'
                           and peer.day <> current.day
+                          and peer.segment_avg is not null
                     ) as neighbor_avg,
                     (
                         select coalesce(sum(peer.segment_count), 0)
@@ -1145,8 +1194,10 @@ class ListingRepository:
                           and peer.property_key = current.property_key
                           and peer.deal_key = current.deal_key
                           and peer.currency_key = current.currency_key
+                          and peer.room_key = current.room_key
                           and peer.day between current.day - interval '2 days' and current.day + interval '2 days'
                           and peer.day <> current.day
+                          and peer.segment_avg is not null
                     ) as neighbor_count
                 from daily_segments current
             ),
@@ -1154,12 +1205,23 @@ class ListingRepository:
                 select
                     *,
                     case
-                        when segment_count >= 3
-                         and neighbor_count >= 3
+                        when neighbor_count >= 5
                          and neighbor_avg > 0
                          and (
-                            segment_avg > neighbor_avg * 2.2
-                            or segment_avg < neighbor_avg / 2.2
+                            (
+                                segment_count <= 2
+                                and (
+                                    segment_avg > neighbor_avg * 1.8
+                                    or segment_avg < neighbor_avg / 1.8
+                                )
+                            )
+                            or (
+                                segment_count >= 3
+                                and (
+                                    segment_avg > neighbor_avg * 2.0
+                                    or segment_avg < neighbor_avg / 2.0
+                                )
+                            )
                          )
                         then true
                         else false
@@ -1170,12 +1232,13 @@ class ListingRepository:
                 days.day,
                 to_char(days.day, 'DD.MM') as label,
                 sum(clean_segments.segment_avg * clean_segments.segment_count)
-                    filter (where clean_segments.is_anomaly is false)
+                    filter (where clean_segments.is_anomaly is false and clean_segments.segment_avg is not null)
                     / nullif(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly is false), 0)
                     as avg_value,
                 coalesce(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly is false), 0)
                     as listing_count,
-                coalesce(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly), 0)
+                coalesce(sum(clean_segments.listing_anomaly_count), 0)
+                    + coalesce(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly), 0)
                     as anomaly_count
             from days
             left join clean_segments on clean_segments.day = days.day

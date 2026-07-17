@@ -6,6 +6,18 @@ from decimal import Decimal
 from uyjoy_etl.web_repository import ListingFilters, ListingRepository, MarketInsightFilters, parse_decimal
 
 
+class _QueryCapture:
+    def __init__(self) -> None:
+        self.sql = ""
+
+    def execute(self, sql: str, params: dict[str, object]) -> "_QueryCapture":
+        self.sql = sql
+        return self
+
+    def fetchall(self) -> list[dict[str, object]]:
+        return []
+
+
 class WebRepositoryTest(unittest.TestCase):
     def test_parse_decimal_accepts_space_grouping(self) -> None:
         self.assertEqual(parse_decimal("1 250 000"), Decimal("1250000"))
@@ -81,6 +93,23 @@ class WebRepositoryTest(unittest.TestCase):
 
         self.assertEqual(rent_trend["value_expression"], "price_value")
         self.assertIn("area_m2", apartment_trend["extra_predicate"])
+
+    def test_market_trend_query_scores_listing_level_outliers(self) -> None:
+        repository = ListingRepository(database=None)  # type: ignore[arg-type]
+        capture = _QueryCapture()
+
+        repository._query_market_trend_rows(
+            capture,
+            "where (quality_status is null or quality_status = 'ok')",
+            {},
+            MarketInsightFilters(currency_code="UZS", days=60),
+            repository._market_trend_sql(MarketInsightFilters(metric="avg_price_m2")),
+        )
+
+        self.assertIn("segment_stats", capture.sql)
+        self.assertIn("percentile_cont(0.25)", capture.sql)
+        self.assertIn("is_listing_anomaly", capture.sql)
+        self.assertIn("room_key", capture.sql)
 
 
 if __name__ == "__main__":
