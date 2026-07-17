@@ -107,6 +107,15 @@ where price_value is not null
       nullif(city_name, '') is not null
       or nullif(district_name, '') is not null
       or nullif(location_path, '') is not null
+  )
+  and (
+      case
+          when position('/kvartir' in lower(source_category_path)) > 0 then 'apartment'
+          when position('/doma' in lower(source_category_path)) > 0 then 'house'
+          when position('/zemlja' in lower(source_category_path)) > 0 then 'land'
+          else category_type
+      end is distinct from 'apartment'
+      or room_count is not null
   );
 """
 
@@ -169,5 +178,9 @@ where price_value is not null
       or nullif(district_name, '') is not null
       or nullif(address, '') is not null
       or nullif(neighborhood, '') is not null
+  )
+  and (
+      property_type is distinct from 'apartment'
+      or room_count is not null
   );
 """
