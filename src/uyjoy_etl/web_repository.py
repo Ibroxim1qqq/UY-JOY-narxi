@@ -1194,7 +1194,7 @@ class ListingRepository:
     ) -> dict[str, Any]:
         width = 760
         height = 280
-        pad_left = 58
+        pad_left = 70
         pad_right = 20
         pad_top = 22
         pad_bottom = 38
@@ -1213,6 +1213,8 @@ class ListingRepository:
                 "average_y": None,
                 "y_min_display": "-",
                 "y_max_display": "-",
+                "y_min_short": "-",
+                "y_max_short": "-",
                 "anomaly_total": anomaly_total,
                 "width": width,
                 "height": height,
@@ -1296,6 +1298,8 @@ class ListingRepository:
             "average_y": round(average_y, 2),
             "y_min_display": self._format_trend_money(y_min, filters.currency_code, metric_label),
             "y_max_display": self._format_trend_money(y_max, filters.currency_code, metric_label),
+            "y_min_short": self._format_compact_money(y_min, filters.currency_code, metric_label),
+            "y_max_short": self._format_compact_money(y_max, filters.currency_code, metric_label),
             "anomaly_total": anomaly_total,
             "width": width,
             "height": height,
@@ -1437,6 +1441,24 @@ class ListingRepository:
         if currency_code == "UZS":
             return f"{value:,.0f} so'm{suffix}"
         return f"{value:,.0f}{suffix}"
+
+    def _format_compact_money(self, value: float, currency_code: str | None, metric_label: str) -> str:
+        suffix = "/m2" if "m2" in metric_label else ""
+        abs_value = abs(value)
+        if abs_value >= 1_000_000_000:
+            amount = f"{value / 1_000_000_000:.1f}B"
+        elif abs_value >= 1_000_000:
+            amount = f"{value / 1_000_000:.1f}M"
+        elif abs_value >= 1_000:
+            amount = f"{value / 1_000:.0f}k"
+        else:
+            amount = f"{value:,.0f}"
+
+        if currency_code == "USD":
+            return f"${amount}{suffix}"
+        if currency_code == "UZS":
+            return f"{amount} so'm{suffix}"
+        return f"{amount}{suffix}"
 
     def _area_display_from_columns(self, row: dict[str, Any]) -> str:
         if row.get("area_m2") not in (None, ""):

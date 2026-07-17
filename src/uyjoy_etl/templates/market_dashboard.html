@@ -187,36 +187,54 @@
                 <small>O'rtacha narx</small>
               </div>
               {% if trend.chart.points|selectattr("y")|list|length >= 5 %}
-                <svg viewBox="0 0 {{ trend.chart.width }} {{ trend.chart.height }}" aria-label="{{ trend.title }} trendi">
-                  <text x="8" y="27" class="axis-text">{{ trend.chart.y_max_display }}</text>
-                  <text x="8" y="246" class="axis-text">{{ trend.chart.y_min_display }}</text>
-                  <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
-                  <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
-                  <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+                <svg class="market-line-svg" viewBox="0 0 {{ trend.chart.width }} {{ trend.chart.height }}" aria-label="{{ trend.title }} trendi">
+                  <defs>
+                    <linearGradient id="trendFill{{ loop.index }}" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stop-color="{% if trend.accent == 'blue' %}#3b73e6{% else %}#00836f{% endif %}" stop-opacity="0.18"></stop>
+                      <stop offset="100%" stop-color="{% if trend.accent == 'blue' %}#3b73e6{% else %}#00836f{% endif %}" stop-opacity="0.02"></stop>
+                    </linearGradient>
+                  </defs>
+                  <text x="12" y="28" class="market-axis-text">{{ trend.chart.y_max_short }}</text>
+                  <text x="12" y="246" class="market-axis-text">{{ trend.chart.y_min_short }}</text>
+                  <line x1="70" y1="24" x2="740" y2="24" class="market-grid-line"></line>
+                  <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
+                  <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
+                  <polygon points="70,242 {{ trend.chart.polyline }} 740,242" fill="url(#trendFill{{ loop.index }})"></polygon>
                   {% if trend.chart.moving_average_polyline %}
-                    <polyline points="{{ trend.chart.moving_average_polyline }}" class="moving-average-line"></polyline>
+                    <polyline points="{{ trend.chart.moving_average_polyline }}" class="market-smooth-line"></polyline>
                   {% endif %}
-                  <polyline points="{{ trend.chart.polyline }}" class="{% if trend.accent == 'blue' %}moving-average-line{% else %}price-line{% endif %}"></polyline>
+                  <polyline points="{{ trend.chart.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
                   {% for point in trend.chart.points %}
-                    {% if point.y %}
-                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3" class="price-point"></circle>
+                    {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
+                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
+                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon</title>
+                      </circle>
                     {% endif %}
                   {% endfor %}
                 </svg>
               {% elif insights.price_trend.points %}
-                <svg viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" aria-label="{{ trend.title }} umumiy trendi">
-                  <text x="8" y="27" class="axis-text">{{ insights.price_trend.y_max_display }}</text>
-                  <text x="8" y="246" class="axis-text">{{ insights.price_trend.y_min_display }}</text>
-                  <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
-                  <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
-                  <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+                <svg class="market-line-svg" viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" aria-label="{{ trend.title }} umumiy trendi">
+                  <defs>
+                    <linearGradient id="fallbackFill{{ loop.index }}" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0%" stop-color="{% if trend.accent == 'blue' %}#3b73e6{% else %}#00836f{% endif %}" stop-opacity="0.18"></stop>
+                      <stop offset="100%" stop-color="{% if trend.accent == 'blue' %}#3b73e6{% else %}#00836f{% endif %}" stop-opacity="0.02"></stop>
+                    </linearGradient>
+                  </defs>
+                  <text x="12" y="28" class="market-axis-text">{{ insights.price_trend.y_max_short }}</text>
+                  <text x="12" y="246" class="market-axis-text">{{ insights.price_trend.y_min_short }}</text>
+                  <line x1="70" y1="24" x2="740" y2="24" class="market-grid-line"></line>
+                  <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
+                  <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
+                  <polygon points="70,242 {{ insights.price_trend.polyline }} 740,242" fill="url(#fallbackFill{{ loop.index }})"></polygon>
                   {% if insights.price_trend.moving_average_polyline %}
-                    <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
+                    <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="market-smooth-line"></polyline>
                   {% endif %}
-                  <polyline points="{{ insights.price_trend.polyline }}" class="{% if trend.accent == 'blue' %}moving-average-line{% else %}price-line{% endif %}"></polyline>
+                  <polyline points="{{ insights.price_trend.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
                   {% for point in insights.price_trend.points %}
-                    {% if point.y %}
-                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3" class="price-point"></circle>
+                    {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
+                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
+                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon</title>
+                      </circle>
                     {% endif %}
                   {% endfor %}
                 </svg>
