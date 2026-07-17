@@ -207,7 +207,14 @@
                   {% for point in trend.chart.points %}
                     {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
-                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon</title>
+                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon asosida</title>
+                      </circle>
+                    {% endif %}
+                  {% endfor %}
+                  {% for point in trend.chart.points %}
+                    {% if point.y %}
+                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="10" class="market-hover-point">
+                        <title>{{ point.label }} | {{ point.display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
                       </circle>
                     {% endif %}
                   {% endfor %}
@@ -233,7 +240,14 @@
                   {% for point in insights.price_trend.points %}
                     {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
-                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon</title>
+                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon asosida</title>
+                      </circle>
+                    {% endif %}
+                  {% endfor %}
+                  {% for point in insights.price_trend.points %}
+                    {% if point.y %}
+                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="10" class="market-hover-point">
+                        <title>{{ point.label }} | {{ point.display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
                       </circle>
                     {% endif %}
                   {% endfor %}

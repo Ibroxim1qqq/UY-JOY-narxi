@@ -1486,6 +1486,13 @@ pre {
   stroke: #2f66df;
 }
 
+.market-hover-point {
+  cursor: crosshair;
+  fill: transparent;
+  pointer-events: all;
+  stroke: transparent;
+}
+
 .trend-badge {
   display: inline-flex;
   align-items: center;
