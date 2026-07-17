@@ -106,7 +106,7 @@ def _mark_olx(conn) -> tuple[int, int]:
                     case
                         when source_category_path like '%kvartir%'
                              and _total_area_m2 is not null
-                             and _total_area_m2 > 2000
+                             and (_total_area_m2 < 10 or _total_area_m2 > 2000)
                             then 'apartment_area_outlier'
                     end,
                     case
@@ -133,6 +133,8 @@ def _mark_olx(conn) -> tuple[int, int]:
                             then replace(param_values -> 'total_area' ->> 'normalizedValue', ',', '.')::numeric
                     end as _total_area_m2,
                     case
+                        when (param_values -> 'plot' ->> 'normalizedValue') ~ '^[0-9]+([.,][0-9]+)?$'
+                            then replace(param_values -> 'plot' ->> 'normalizedValue', ',', '.')::numeric
                         when (param_values -> 'land_area' ->> 'normalizedValue') ~ '^[0-9]+([.,][0-9]+)?$'
                             then replace(param_values -> 'land_area' ->> 'normalizedValue', ',', '.')::numeric
                     end as _land_sotix,
@@ -221,7 +223,7 @@ def _mark_telegram(conn) -> tuple[int, int]:
                     case
                         when property_type = 'apartment'
                              and area_m2 is not null
-                             and area_m2 > 2000
+                             and (area_m2 < 10 or area_m2 > 2000)
                             then 'apartment_area_outlier'
                     end,
                     case

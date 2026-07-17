@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -27,6 +28,7 @@ PROPERTY_LABELS = {
     "sanatorium": "Dam olish joyi",
 }
 VISIBLE_QUALITY_CLAUSE = "(quality_status is null or quality_status = 'ok')"
+USD_TO_UZS_RATE = Decimal("12093.35")
 
 
 @dataclass(frozen=True)
@@ -59,9 +61,30 @@ class MarketInsightFilters:
     city: str = ""
     district: str = ""
     rooms: str = ""
-    currency_code: str = "USD"
+    currency_code: str = "UZS"
     metric: str = "auto"
+    chart_mode: str = "avg7"
     days: int = 60
+    period_mode: str = "all"
+    date_from: date | None = None
+    date_to: date | None = None
+    price_min: Decimal | None = None
+    price_max: Decimal | None = None
+    area_min: Decimal | None = None
+    area_max: Decimal | None = None
+
+    @property
+    def period_label(self) -> str:
+        if self.period_mode == "relative":
+            return f"Oxirgi {self.days} kun"
+        if self.period_mode == "fixed":
+            if self.date_from and self.date_to:
+                return f"{self.date_from:%d.%m.%Y} - {self.date_to:%d.%m.%Y}"
+            if self.date_from:
+                return f"{self.date_from:%d.%m.%Y} dan"
+            if self.date_to:
+                return f"{self.date_to:%d.%m.%Y} gacha"
+        return "Umumiy"
 
 
 @dataclass(frozen=True)
@@ -433,6 +456,10 @@ class ListingRepository:
         filters = self._normalize_market_filters(filters)
         where_sql, params = self._build_market_where_clause(filters)
         trend = self._market_trend_sql(filters)
+        city_expr = self._canonical_city_expr()
+        district_expr = self._canonical_district_expr()
+        region_expr = self._canonical_region_expr()
+        price_uzs_expr = self._price_uzs_expression()
         with self._database.connect() as conn:
             currency_facets = self._get_market_currency_facets(conn, where_sql, params, trend["extra_predicate"])
             filters = self._with_available_currency(filters, currency_facets)
@@ -492,19 +519,17 @@ class ListingRepository:
             top_cities = [dict(row) for row in conn.execute(
                 f"""
                 select
-                    city_name,
+                    {city_expr} as city_name,
                     count(*) as total,
                     count(*) filter (where deal_type = 'sale') as sale_total,
                     count(*) filter (where deal_type = 'rent') as rent_total,
-                    percentile_cont(0.5) within group (order by price_value)
-                        filter (where currency_code = 'USD' and price_value > 0) as median_usd,
-                    percentile_cont(0.5) within group (order by price_value)
-                        filter (where currency_code = 'UZS' and price_value > 0) as median_uzs
+                    percentile_cont(0.5) within group (order by {price_uzs_expr})
+                        filter (where price_value > 0) as median_uzs
                 from real_estate_listings
                 {where_sql}
                   and city_name is not null
                   and city_name <> ''
-                group by city_name
+                group by {city_expr}
                 order by count(*) desc
                 limit 10
                 """,
@@ -513,32 +538,71 @@ class ListingRepository:
             top_districts = [dict(row) for row in conn.execute(
                 f"""
                 select
-                    coalesce(district_name, 'Tuman ko''rsatilmagan') as district_name,
+                    {district_expr} as district_name,
                     count(*) as total,
                     count(*) filter (where deal_type = 'sale') as sale_total,
                     count(*) filter (where deal_type = 'rent') as rent_total
                 from real_estate_listings
                 {where_sql}
-                group by coalesce(district_name, 'Tuman ko''rsatilmagan')
+                group by {district_expr}
                 order by count(*) desc
                 limit 12
+                """,
+                params,
+            ).fetchall()]
+            regional_summary = [dict(row) for row in conn.execute(
+                f"""
+                select
+                    {region_expr} as region_name,
+                    count(*) as total,
+                    count(*) filter (where deal_type = 'sale') as sale_total,
+                    count(*) filter (where deal_type = 'rent') as rent_total,
+                    count(*) filter (where property_type = 'apartment') as apartment_total,
+                    count(*) filter (where property_type = 'house') as house_total,
+                    percentile_cont(0.5) within group (order by {price_uzs_expr})
+                        filter (where price_value > 0) as median_price
+                from real_estate_listings
+                {where_sql}
+                group by {region_expr}
+                order by count(*) desc, {region_expr}
+                limit 20
                 """,
                 params,
             ).fetchall()]
             map_points = [dict(row) for row in conn.execute(
                 f"""
                 select
-                    coalesce(nullif(district_name, ''), nullif(city_name, ''), 'Noma''lum') as label,
+                    coalesce(nullif({district_expr}, 'Tuman ko''rsatilmagan'), {city_expr}, 'Noma''lum') as label,
                     avg(latitude)::float as lat,
                     avg(longitude)::float as lon,
                     count(*) as total,
                     count(*) filter (where deal_type = 'sale') as sale_total,
-                    count(*) filter (where deal_type = 'rent') as rent_total
+                    count(*) filter (where deal_type = 'rent') as rent_total,
+                    percentile_cont(0.5) within group (order by {price_uzs_expr} / nullif(area_m2, 0))
+                        filter (
+                            where deal_type = 'sale'
+                              and area_m2 is not null
+                              and area_m2 >= 10
+                              and area_m2 <= 1000
+                              and price_value is not null
+                              and price_value > 0
+                        ) as median_sale_m2,
+                    percentile_cont(0.5) within group (order by {price_uzs_expr})
+                        filter (
+                            where deal_type = 'rent'
+                              and price_value is not null
+                              and price_value > 0
+                        ) as median_rent,
+                    percentile_cont(0.5) within group (order by {price_uzs_expr})
+                        filter (
+                            where price_value is not null
+                              and price_value > 0
+                        ) as median_price
                 from real_estate_listings
                 {where_sql}
                   and latitude is not null
                   and longitude is not null
-                group by coalesce(nullif(district_name, ''), nullif(city_name, ''), 'Noma''lum')
+                group by coalesce(nullif({district_expr}, 'Tuman ko''rsatilmagan'), {city_expr}, 'Noma''lum')
                 order by count(*) desc
                 limit 60
                 """,
@@ -596,22 +660,21 @@ class ListingRepository:
                 with banded as (
                     select
                         case
-                            when price_value < 30000 then '< $30k'
-                            when price_value < 50000 then '$30k-$50k'
-                            when price_value < 80000 then '$50k-$80k'
-                            when price_value < 120000 then '$80k-$120k'
-                            else '$120k+'
+                            when {price_uzs_expr} < 500000000 then '< 500 mln'
+                            when {price_uzs_expr} < 1000000000 then '500 mln-1 mlrd'
+                            when {price_uzs_expr} < 2000000000 then '1-2 mlrd'
+                            when {price_uzs_expr} < 5000000000 then '2-5 mlrd'
+                            else '5 mlrd+'
                         end as label,
                         case
-                            when price_value < 30000 then 1
-                            when price_value < 50000 then 2
-                            when price_value < 80000 then 3
-                            when price_value < 120000 then 4
+                            when {price_uzs_expr} < 500000000 then 1
+                            when {price_uzs_expr} < 1000000000 then 2
+                            when {price_uzs_expr} < 2000000000 then 3
+                            when {price_uzs_expr} < 5000000000 then 4
                             else 5
                         end as sort_order
                     from real_estate_listings
                     {where_sql}
-                      and currency_code = 'USD'
                       and price_value is not null
                       and price_value > 0
                 )
@@ -626,17 +689,71 @@ class ListingRepository:
                 f"""
                 select
                     coalesce(deal_type, 'unknown') as deal_type,
-                    currency_code,
+                    'UZS' as currency_code,
                     count(*) as total,
-                    percentile_cont(0.5) within group (order by price_value) as median_price,
-                    percentile_cont(0.9) within group (order by price_value) as p90_price
+                    percentile_cont(0.5) within group (order by {price_uzs_expr}) as median_price,
+                    percentile_cont(0.9) within group (order by {price_uzs_expr}) as p90_price
                 from real_estate_listings
                 {where_sql}
                   and price_value is not null
                   and price_value > 0
-                  and currency_code in ('USD', 'UZS')
-                group by coalesce(deal_type, 'unknown'), currency_code
-                order by coalesce(deal_type, 'unknown'), currency_code
+                group by coalesce(deal_type, 'unknown')
+                order by coalesce(deal_type, 'unknown')
+                """,
+                params,
+            ).fetchall()]
+            price_segment_bars = [dict(row) for row in conn.execute(
+                f"""
+                with priced as (
+                    select
+                        case
+                            when deal_type = 'sale' and property_type = 'apartment' then 'Kvartira sotuv'
+                            when deal_type = 'sale' and property_type = 'house' then 'Hovli sotuv'
+                            when deal_type = 'rent' and property_type = 'apartment' then 'Kvartira ijara'
+                            when deal_type = 'rent' and property_type = 'house' then 'Hovli ijara'
+                        end as segment_label,
+                        case
+                            when deal_type = 'sale' and property_type = 'apartment' then 1
+                            when deal_type = 'sale' and property_type = 'house' then 2
+                            when deal_type = 'rent' and property_type = 'apartment' then 3
+                            when deal_type = 'rent' and property_type = 'house' then 4
+                        end as segment_order,
+                        case
+                            when deal_type = 'rent' and {price_uzs_expr} < 2000000 then '< 2 mln'
+                            when deal_type = 'rent' and {price_uzs_expr} < 5000000 then '2-5 mln'
+                            when deal_type = 'rent' and {price_uzs_expr} < 10000000 then '5-10 mln'
+                            when deal_type = 'rent' and {price_uzs_expr} < 20000000 then '10-20 mln'
+                            when deal_type = 'rent' then '20 mln+'
+                            when {price_uzs_expr} < 500000000 then '< 500 mln'
+                            when {price_uzs_expr} < 1000000000 then '500 mln-1 mlrd'
+                            when {price_uzs_expr} < 2000000000 then '1-2 mlrd'
+                            when {price_uzs_expr} < 5000000000 then '2-5 mlrd'
+                            else '5 mlrd+'
+                        end as band_label,
+                        case
+                            when deal_type = 'rent' and {price_uzs_expr} < 2000000 then 1
+                            when deal_type = 'rent' and {price_uzs_expr} < 5000000 then 2
+                            when deal_type = 'rent' and {price_uzs_expr} < 10000000 then 3
+                            when deal_type = 'rent' and {price_uzs_expr} < 20000000 then 4
+                            when deal_type = 'rent' then 5
+                            when {price_uzs_expr} < 500000000 then 1
+                            when {price_uzs_expr} < 1000000000 then 2
+                            when {price_uzs_expr} < 2000000000 then 3
+                            when {price_uzs_expr} < 5000000000 then 4
+                            else 5
+                        end as band_order
+                    from real_estate_listings
+                    {where_sql}
+                      and deal_type in ('sale', 'rent')
+                      and property_type in ('apartment', 'house')
+                      and price_value is not null
+                      and price_value > 0
+                )
+                select segment_label, segment_order, band_label, band_order, count(*) as total
+                from priced
+                where segment_label is not null
+                group by segment_label, segment_order, band_label, band_order
+                order by segment_order, band_order
                 """,
                 params,
             ).fetchall()]
@@ -661,6 +778,7 @@ class ListingRepository:
                 order by days.day
                 """
             ).fetchall()]
+            market_comparison = self._get_market_comparison(conn, filters)
             trend_rows = self._query_market_trend_rows(conn, where_sql, params, filters, trend)
             segment_trends = [
                 self._market_segment_trend(
@@ -678,7 +796,7 @@ class ListingRepository:
                     filters,
                     deal_type="sale",
                     property_type="house",
-                    metric="avg_price_m2",
+                    metric="avg_price_sotix",
                     title="Hovli (sotuv)",
                     badge="SOTUV",
                     accent="green",
@@ -712,12 +830,26 @@ class ListingRepository:
         for row in property_mix:
             row["label"] = self._property_label(row.get("property_type"))
         for row in top_cities:
-            row["median_usd_display"] = self._format_money(row.get("median_usd"), "USD")
             row["median_uzs_display"] = self._format_money(row.get("median_uzs"), "UZS")
+        for row in regional_summary:
+            row["median_display"] = self._format_money(row.get("median_price"), "UZS")
         for row in price_summary:
             row["deal_label"] = self._deal_label(row.get("deal_type"))
             row["median_display"] = self._format_money(row.get("median_price"), row.get("currency_code"))
             row["p90_display"] = self._format_money(row.get("p90_price"), row.get("currency_code"))
+        segment_price_cards = [
+            {
+                "title": row["title"],
+                "badge": row["badge"],
+                "accent": row["accent"],
+                "metric_label": row["chart"]["metric_label"],
+                "average_display": row["chart"]["average_display"],
+                "latest_display": row["chart"]["latest_display"],
+                "listing_total": row["listing_total"],
+            }
+            for row in segment_trends
+        ]
+        price_segment_bars = self._prepare_price_segment_bars(price_segment_bars)
 
         return {
             "filters": filters,
@@ -728,12 +860,19 @@ class ListingRepository:
             "property_mix": _with_percent(property_mix, ("total",)),
             "top_cities": _with_percent(top_cities, ("total",)),
             "top_districts": _with_percent(top_districts, ("total", "sale_total", "rent_total")),
+            "regional_summary": _with_percent(
+                regional_summary,
+                ("total", "sale_total", "rent_total", "apartment_total", "house_total"),
+            ),
             "map": self._prepare_market_map(map_points, filters),
             "room_mix": _with_percent(room_mix, ("total",)),
             "area_bands": _with_percent(area_bands, ("total",)),
             "usd_price_bands": _with_percent(usd_price_bands, ("total",)),
+            "price_segment_bars": price_segment_bars,
+            "segment_price_cards": segment_price_cards,
             "price_summary": price_summary,
             "daily_supply": _with_percent(daily_supply, ("olx_total", "telegram_total")),
+            "market_comparison": market_comparison,
             "price_trend": self._prepare_line_chart(trend_rows, filters, trend["label"]),
             "segment_trends": segment_trends,
             "sale_apartment_m2_trend": self._prepare_line_chart(
@@ -789,18 +928,32 @@ class ListingRepository:
         return result
 
     def _normalize_market_filters(self, filters: MarketInsightFilters) -> MarketInsightFilters:
-        currency_code = filters.currency_code if filters.currency_code in {"USD", "UZS"} else "USD"
-        metric = filters.metric if filters.metric in {"auto", "avg_price", "avg_price_m2"} else "auto"
+        metric = filters.metric if filters.metric in {"auto", "avg_price", "avg_price_m2", "avg_price_sotix"} else "auto"
         days = min(max(filters.days, 14), 180)
+        period_mode = filters.period_mode if filters.period_mode in {"all", "relative", "fixed"} else "all"
+        date_from = filters.date_from
+        date_to = filters.date_to
+        if period_mode == "fixed" and date_from and date_to and date_from > date_to:
+            date_from, date_to = date_to, date_from
+        if period_mode == "fixed" and not date_from and not date_to:
+            period_mode = "all"
         return MarketInsightFilters(
             deal_type=filters.deal_type if filters.deal_type in DEAL_TYPE_FILTERS else "",
             property_type=filters.property_type.strip(),
-            city=filters.city.strip(),
-            district=filters.district.strip(),
+            city=self._canonical_city_value(filters.city),
+            district=self._canonical_district_value(filters.district),
             rooms=filters.rooms if filters.rooms == "7plus" or filters.rooms.isdigit() else "",
-            currency_code=currency_code,
+            currency_code="UZS",
             metric=metric,
+            chart_mode=filters.chart_mode if filters.chart_mode in {"avg7", "daily"} else "avg7",
             days=days,
+            period_mode=period_mode,
+            date_from=date_from,
+            date_to=date_to,
+            price_min=filters.price_min if filters.price_min is None or filters.price_min >= 0 else None,
+            price_max=filters.price_max if filters.price_max is None or filters.price_max >= 0 else None,
+            area_min=filters.area_min if filters.area_min is None or filters.area_min >= 0 else None,
+            area_max=filters.area_max if filters.area_max is None or filters.area_max >= 0 else None,
         )
 
     def _build_market_where_clause(self, filters: MarketInsightFilters) -> tuple[str, dict[str, Any]]:
@@ -817,11 +970,11 @@ class ListingRepository:
 
         if filters.city:
             params["market_city"] = filters.city
-            clauses.append("city_name = %(market_city)s")
+            clauses.append(f"{self._canonical_city_expr()} = %(market_city)s")
 
         if filters.district:
             params["market_district"] = filters.district
-            clauses.append("district_name = %(market_district)s")
+            clauses.append(f"{self._canonical_district_expr()} = %(market_district)s")
 
         if filters.rooms == "7plus":
             clauses.append("room_count >= 7")
@@ -829,13 +982,177 @@ class ListingRepository:
             params["market_rooms"] = int(filters.rooms)
             clauses.append("room_count = %(market_rooms)s")
 
+        price_uzs_expr = self._price_uzs_expression()
+        if filters.price_min is not None:
+            params["market_price_min"] = filters.price_min
+            clauses.append(f"{price_uzs_expr} >= %(market_price_min)s")
+
+        if filters.price_max is not None:
+            params["market_price_max"] = filters.price_max
+            clauses.append(f"{price_uzs_expr} <= %(market_price_max)s")
+
+        if filters.area_min is not None:
+            params["market_area_min"] = filters.area_min
+            clauses.append("area_m2 >= %(market_area_min)s")
+
+        if filters.area_max is not None:
+            params["market_area_max"] = filters.area_max
+            clauses.append("area_m2 <= %(market_area_max)s")
+
+        listing_date = "coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date"
+        if filters.period_mode == "relative":
+            params["market_days"] = filters.days
+            clauses.append(f"{listing_date} >= current_date - (%(market_days)s::int - 1) * interval '1 day'")
+        elif filters.period_mode == "fixed":
+            if filters.date_from:
+                params["market_date_from"] = filters.date_from
+                clauses.append(f"{listing_date} >= %(market_date_from)s")
+            if filters.date_to:
+                params["market_date_to"] = filters.date_to
+                clauses.append(f"{listing_date} <= %(market_date_to)s")
+
         return "where " + " and ".join(clauses), params
+
+    def _price_uzs_expression(self) -> str:
+        """Narx metrikalari uchun hamma valyutani UZS qiymatga keltiradi."""
+
+        return (
+            "case "
+            f"when currency_code = 'USD' then price_value * {USD_TO_UZS_RATE} "
+            "when currency_code in ('UZS', 'SUM') then price_value "
+            "else price_value "
+            "end"
+        )
+
+    def _canonical_city_expr(self) -> str:
+        """Lotin/kirill shahar nomlarini bitta dashboard nomiga yig'adi."""
+
+        return """
+            case
+                when lower(coalesce(city_name, '')) in ('ташкент', 'toshkent', 'tashkent', 'toshkent shahri') then 'Toshkent'
+                when lower(coalesce(city_name, '')) like '%%самарканд%%' or lower(coalesce(city_name, '')) like '%%samarqand%%' then 'Samarqand'
+                when lower(coalesce(city_name, '')) like '%%чирчик%%' or lower(coalesce(city_name, '')) like '%%chirchiq%%' then 'Chirchiq'
+                when lower(coalesce(city_name, '')) like '%%янгиюль%%' or lower(coalesce(city_name, '')) like '%%yangiy%%' then 'Yangiyo''l'
+                when lower(coalesce(city_name, '')) like '%%наво%%' or lower(coalesce(city_name, '')) like '%%navo%%' then 'Navoiy'
+                when lower(coalesce(city_name, '')) like '%%ферган%%' or lower(coalesce(city_name, '')) like '%%farg%%' then 'Farg''ona'
+                when lower(coalesce(city_name, '')) like '%%андижан%%' or lower(coalesce(city_name, '')) like '%%andij%%' then 'Andijon'
+                when lower(coalesce(city_name, '')) like '%%наманган%%' or lower(coalesce(city_name, '')) like '%%namang%%' then 'Namangan'
+                when lower(coalesce(city_name, '')) like '%%бухар%%' or lower(coalesce(city_name, '')) like '%%buxor%%' then 'Buxoro'
+                when lower(coalesce(city_name, '')) like '%%карши%%' or lower(coalesce(city_name, '')) like '%%qarshi%%' then 'Qarshi'
+                when lower(coalesce(city_name, '')) like '%%термез%%' or lower(coalesce(city_name, '')) like '%%termiz%%' then 'Termiz'
+                when lower(coalesce(city_name, '')) like '%%ургенч%%' or lower(coalesce(city_name, '')) like '%%urganch%%' then 'Urganch'
+                when lower(coalesce(city_name, '')) like '%%нукус%%' or lower(coalesce(city_name, '')) like '%%nukus%%' then 'Nukus'
+                else coalesce(nullif(city_name, ''), 'Noma''lum')
+            end
+        """
+
+    def _canonical_region_expr(self) -> str:
+        """Viloyat kesimidagi jadval uchun shahar/region nomlarini umumlashtiradi."""
+
+        combined = "lower(coalesce(region_name, '') || ' ' || coalesce(city_name, ''))"
+        return f"""
+            case
+                when {combined} like '%%ташкент%%' or {combined} like '%%toshkent%%' or {combined} like '%%tashkent%%' or {combined} like '%%чирчик%%' or {combined} like '%%chirchiq%%' or {combined} like '%%янгиюль%%' or {combined} like '%%yangiy%%' then 'Toshkent'
+                when {combined} like '%%самарканд%%' or {combined} like '%%samarqand%%' then 'Samarqand'
+                when {combined} like '%%наво%%' or {combined} like '%%navo%%' then 'Navoiy'
+                when {combined} like '%%ферган%%' or {combined} like '%%farg%%' then 'Farg''ona'
+                when {combined} like '%%андижан%%' or {combined} like '%%andij%%' then 'Andijon'
+                when {combined} like '%%наманган%%' or {combined} like '%%namang%%' then 'Namangan'
+                when {combined} like '%%бухар%%' or {combined} like '%%buxor%%' then 'Buxoro'
+                when {combined} like '%%кашк%%' or {combined} like '%%qashq%%' or {combined} like '%%карши%%' or {combined} like '%%qarshi%%' then 'Qashqadaryo'
+                when {combined} like '%%сурх%%' or {combined} like '%%surx%%' or {combined} like '%%термез%%' or {combined} like '%%termiz%%' then 'Surxondaryo'
+                when {combined} like '%%хорезм%%' or {combined} like '%%xorazm%%' or {combined} like '%%ургенч%%' or {combined} like '%%urganch%%' then 'Xorazm'
+                when {combined} like '%%нукус%%' or {combined} like '%%qoraqal%%' or {combined} like '%%каракал%%' then 'Qoraqalpog''iston'
+                else coalesce(nullif(region_name, ''), {self._canonical_city_expr()}, 'Noma''lum')
+            end
+        """
+
+    def _canonical_district_expr(self) -> str:
+        """Toshkent tumanlarini lotin/kirill variantlaridan bitta nomga keltiradi."""
+
+        source = "lower(coalesce(district_name, ''))"
+        return f"""
+            case
+                when {source} like '%%юнус%%' or {source} like '%%yunus%%' then 'Yunusobod'
+                when {source} like '%%мирзо%%' or {source} like '%%ulug%%' then 'Mirzo Ulug''bek'
+                when {source} like '%%чилан%%' or {source} like '%%chilon%%' then 'Chilonzor'
+                when {source} like '%%мирабад%%' or {source} like '%%mirobod%%' then 'Mirobod'
+                when {source} like '%%алмазар%%' or {source} like '%%olmazor%%' then 'Olmazor'
+                when {source} like '%%сергел%%' or {source} like '%%sergel%%' then 'Sergeli'
+                when {source} like '%%шайхан%%' or {source} like '%%shayxon%%' then 'Shayxontohur'
+                when {source} like '%%учтеп%%' or {source} like '%%uchtepa%%' then 'Uchtepa'
+                when {source} like '%%яккас%%' or {source} like '%%yakkasaroy%%' then 'Yakkasaroy'
+                when {source} like '%%янгиха%%' or {source} like '%%yangihayot%%' then 'Yangihayot'
+                when {source} like '%%яшнаб%%' or {source} like '%%yashnobod%%' then 'Yashnobod'
+                when {source} like '%%бектем%%' or {source} like '%%bektemir%%' then 'Bektemir'
+                else coalesce(nullif(district_name, ''), 'Tuman ko''rsatilmagan')
+            end
+        """
+
+    def _canonical_city_value(self, value: str | None) -> str:
+        if not value:
+            return ""
+        normalized = value.strip().lower().replace("ё", "е").replace("-", " ")
+        if normalized in {"ташкент", "toshkent", "tashkent", "toshkent shahri"}:
+            return "Toshkent"
+        aliases = (
+            (("самарканд", "samarqand"), "Samarqand"),
+            (("чирчик", "chirchiq"), "Chirchiq"),
+            (("янгиюль", "yangiy"), "Yangiyo'l"),
+            (("наво", "navo"), "Navoiy"),
+            (("ферган", "farg"), "Farg'ona"),
+            (("андижан", "andij"), "Andijon"),
+            (("наманган", "namang"), "Namangan"),
+            (("бухар", "buxor"), "Buxoro"),
+            (("карши", "qarshi"), "Qarshi"),
+            (("термез", "termiz"), "Termiz"),
+            (("ургенч", "urganch"), "Urganch"),
+            (("нукус", "nukus"), "Nukus"),
+        )
+        for needles, canonical in aliases:
+            if any(needle in normalized for needle in needles):
+                return canonical
+        return value.strip()
+
+    def _canonical_district_value(self, value: str | None) -> str:
+        if not value:
+            return ""
+        normalized = (
+            value.strip()
+            .lower()
+            .replace("ё", "е")
+            .replace("'", "")
+            .replace("`", "")
+            .replace("ʻ", "")
+            .replace("’", "")
+            .replace("-", " ")
+        )
+        aliases = (
+            (("юнус", "yunus"), "Yunusobod"),
+            (("мирзо", "ulug"), "Mirzo Ulug'bek"),
+            (("чилан", "chilon"), "Chilonzor"),
+            (("мирабад", "mirobod"), "Mirobod"),
+            (("алмазар", "olmazor"), "Olmazor"),
+            (("сергел", "sergel"), "Sergeli"),
+            (("шайхан", "shayxon"), "Shayxontohur"),
+            (("учтеп", "uchtepa"), "Uchtepa"),
+            (("яккас", "yakkasaroy"), "Yakkasaroy"),
+            (("янгиха", "yangihayot"), "Yangihayot"),
+            (("яшнаб", "yashnobod"), "Yashnobod"),
+            (("бектем", "bektemir"), "Bektemir"),
+        )
+        for needles, canonical in aliases:
+            if any(needle in normalized for needle in needles):
+                return canonical
+        return value.strip()
 
     def _get_market_facets(
         self,
         conn: Any,
         currency_facets: list[dict[str, Any]] | None = None,
     ) -> dict[str, list[dict[str, Any]]]:
+        city_expr = self._canonical_city_expr()
+        district_expr = self._canonical_district_expr()
         sources = conn.execute(
             f"""
             select source as value, count(*) as count
@@ -858,25 +1175,25 @@ class ListingRepository:
         ).fetchall()
         cities = conn.execute(
             f"""
-            select city_name as value, count(*) as count
+            select {city_expr} as value, count(*) as count
             from real_estate_listings
             where {VISIBLE_QUALITY_CLAUSE}
               and city_name is not null
               and city_name <> ''
-            group by city_name
-            order by count(*) desc, city_name
+            group by {city_expr}
+            order by count(*) desc, value
             limit 120
             """
         ).fetchall()
         districts = conn.execute(
             f"""
-            select district_name as value, count(*) as count
+            select {district_expr} as value, count(*) as count
             from real_estate_listings
             where {VISIBLE_QUALITY_CLAUSE}
               and district_name is not null
               and district_name <> ''
-            group by district_name
-            order by count(*) desc, district_name
+            group by {district_expr}
+            order by count(*) desc, value
             limit 240
             """
         ).fetchall()
@@ -943,15 +1260,15 @@ class ListingRepository:
     ) -> list[dict[str, Any]]:
         rows = conn.execute(
             f"""
-            select currency_code as value, count(*) as count
+            select
+                'UZS' as value,
+                count(*) as count,
+                count(distinct coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date) as day_count
             from real_estate_listings
             {where_sql}
-              and currency_code in ('USD', 'UZS')
               and price_value is not null
               and price_value > 0
               {extra_predicate}
-            group by currency_code
-            order by count(*) desc, currency_code
             """,
             params,
         ).fetchall()
@@ -962,42 +1279,325 @@ class ListingRepository:
         filters: MarketInsightFilters,
         currency_facets: list[dict[str, Any]],
     ) -> MarketInsightFilters:
-        if not currency_facets:
-            return filters
-
-        available = {row["value"] for row in currency_facets}
-        if filters.currency_code in available:
-            return filters
-
         return MarketInsightFilters(
             deal_type=filters.deal_type,
             property_type=filters.property_type,
             city=filters.city,
             district=filters.district,
-            currency_code=str(currency_facets[0]["value"]),
+            rooms=filters.rooms,
+            currency_code="UZS",
             metric=filters.metric,
+            chart_mode=filters.chart_mode,
             days=filters.days,
+            period_mode=filters.period_mode,
+            date_from=filters.date_from,
+            date_to=filters.date_to,
+            price_min=filters.price_min,
+            price_max=filters.price_max,
+            area_min=filters.area_min,
+            area_max=filters.area_max,
         )
+
+    def _get_market_comparison(self, conn: Any, filters: MarketInsightFilters) -> dict[str, Any]:
+        """4 asosiy segment uchun region/tuman kesimida qimmat-arzon bar chart modeli."""
+
+        comparison_filters = MarketInsightFilters(
+            city=filters.city,
+            district=filters.district,
+            rooms=filters.rooms,
+            currency_code="UZS",
+            metric=filters.metric,
+            chart_mode=filters.chart_mode,
+            days=filters.days,
+            period_mode=filters.period_mode,
+            date_from=filters.date_from,
+            date_to=filters.date_to,
+            price_min=filters.price_min,
+            price_max=filters.price_max,
+            area_min=filters.area_min,
+            area_max=filters.area_max,
+        )
+        where_sql, params = self._build_market_where_clause(comparison_filters)
+        region_expr = self._canonical_region_expr()
+        city_expr = self._canonical_city_expr()
+        district_expr = self._canonical_district_expr()
+        price_uzs_expr = self._price_uzs_expression()
+        segment_case = """
+            case
+                when deal_type = 'sale' and property_type = 'apartment' then 'apartment_sale'
+                when deal_type = 'sale' and property_type = 'house' then 'house_sale'
+                when deal_type = 'rent' and property_type = 'apartment' then 'apartment_rent'
+                when deal_type = 'rent' and property_type = 'house' then 'house_rent'
+            end
+        """
+        segment_label_case = """
+            case
+                when deal_type = 'sale' and property_type = 'apartment' then 'Kvartira sotuv'
+                when deal_type = 'sale' and property_type = 'house' then 'Hovli sotuv'
+                when deal_type = 'rent' and property_type = 'apartment' then 'Kvartira ijara'
+                when deal_type = 'rent' and property_type = 'house' then 'Hovli ijara'
+            end
+        """
+        segment_order_case = """
+            case
+                when deal_type = 'sale' and property_type = 'apartment' then 1
+                when deal_type = 'sale' and property_type = 'house' then 2
+                when deal_type = 'rent' and property_type = 'apartment' then 3
+                when deal_type = 'rent' and property_type = 'house' then 4
+            end
+        """
+        metric_label_case = """
+            case
+                when deal_type = 'sale' and property_type = 'apartment' then 'O''rtacha m2 narxi'
+                when deal_type = 'sale' and property_type = 'house' then 'O''rtacha sotix narxi'
+                else 'O''rtacha narx'
+            end
+        """
+        metric_value_case = f"""
+            case
+                when deal_type = 'sale'
+                 and property_type = 'apartment'
+                 and area_m2 is not null
+                 and area_m2 >= 10
+                 and area_m2 <= 1000
+                    then {price_uzs_expr} / nullif(area_m2, 0)
+                when deal_type = 'sale'
+                 and property_type = 'house'
+                 and land_sotix is not null
+                 and land_sotix > 0
+                 and land_sotix <= 1000
+                    then {price_uzs_expr} / nullif(land_sotix, 0)
+                when deal_type = 'rent' and property_type in ('apartment', 'house')
+                    then {price_uzs_expr}
+            end
+        """
+        base_cte = f"""
+            with metric_rows as (
+                select
+                    id,
+                    title,
+                    source_url,
+                    {city_expr} as city_name,
+                    {region_expr} as region_name,
+                    {district_expr} as district_name,
+                    coalesce(nullif(address, ''), nullif({district_expr}, 'Tuman ko''rsatilmagan'), {city_expr}, 'Manzil yo''q') as location_label,
+                    {price_uzs_expr} as price_uzs,
+                    {segment_case} as segment_key,
+                    {segment_label_case} as segment_label,
+                    {segment_order_case} as segment_order,
+                    {metric_label_case} as metric_label,
+                    {metric_value_case} as metric_value,
+                    coalesce(posted_at, first_seen_at, last_seen_at, updated_at) as listing_time
+                from real_estate_listings
+                {where_sql}
+                  and deal_type in ('sale', 'rent')
+                  and property_type in ('apartment', 'house')
+                  and price_value is not null
+                  and price_value > 0
+            ),
+            clean_rows as (
+                select *
+                from metric_rows
+                where segment_key is not null
+                  and metric_value is not null
+                  and metric_value > 0
+            )
+        """
+        aggregate_rows = [dict(row) for row in conn.execute(
+            f"""
+            {base_cte}
+            select
+                segment_key,
+                segment_label,
+                segment_order,
+                metric_label,
+                'region' as level,
+                region_name as name,
+                null::text as parent_name,
+                avg(metric_value) as avg_value,
+                count(*) as listing_count
+            from clean_rows
+            group by segment_key, segment_label, segment_order, metric_label, region_name
+            union all
+            select
+                segment_key,
+                segment_label,
+                segment_order,
+                metric_label,
+                'district' as level,
+                district_name as name,
+                region_name as parent_name,
+                avg(metric_value) as avg_value,
+                count(*) as listing_count
+            from clean_rows
+            where district_name <> 'Tuman ko''rsatilmagan'
+            group by segment_key, segment_label, segment_order, metric_label, region_name, district_name
+            order by segment_order, level desc, avg_value desc
+            """,
+            params,
+        ).fetchall()]
+        listing_rows = [dict(row) for row in conn.execute(
+            f"""
+            {base_cte},
+            ranked as (
+                select
+                    segment_key,
+                    'region' as level,
+                    region_name as name,
+                    null::text as parent_name,
+                    title,
+                    source_url,
+                    location_label,
+                    price_uzs,
+                    metric_label,
+                    metric_value,
+                    row_number() over (
+                        partition by segment_key, region_name
+                        order by listing_time desc nulls last, id desc
+                    ) as row_no
+                from clean_rows
+                where source_url is not null and source_url <> ''
+                union all
+                select
+                    segment_key,
+                    'district' as level,
+                    district_name as name,
+                    region_name as parent_name,
+                    title,
+                    source_url,
+                    location_label,
+                    price_uzs,
+                    metric_label,
+                    metric_value,
+                    row_number() over (
+                        partition by segment_key, region_name, district_name
+                        order by listing_time desc nulls last, id desc
+                    ) as row_no
+                from clean_rows
+                where district_name <> 'Tuman ko''rsatilmagan'
+                  and source_url is not null
+                  and source_url <> ''
+            )
+            select *
+            from ranked
+            where row_no <= 8
+            order by segment_key, level, name, row_no
+            """,
+            params,
+        ).fetchall()]
+
+        listings_by_key: dict[tuple[str, str, str, str], list[dict[str, Any]]] = {}
+        for row in listing_rows:
+            key = (
+                row.get("segment_key") or "",
+                row.get("level") or "",
+                row.get("parent_name") or "",
+                row.get("name") or "",
+            )
+            listings_by_key.setdefault(key, []).append(
+                {
+                    "title": self._shorten(row.get("title") or "E'lon", 90),
+                    "url": row.get("source_url") or "",
+                    "location": row.get("location_label") or "",
+                    "price": self._format_money(row.get("price_uzs"), "UZS"),
+                    "metric": self._format_trend_money(
+                        float(row.get("metric_value") or 0),
+                        "UZS",
+                        row.get("metric_label") or "",
+                    ),
+                }
+            )
+
+        segment_map: dict[str, dict[str, Any]] = {}
+        for row in aggregate_rows:
+            segment_key = row.get("segment_key") or ""
+            segment = segment_map.setdefault(
+                segment_key,
+                {
+                    "key": segment_key,
+                    "label": row.get("segment_label") or "",
+                    "order": int(row.get("segment_order") or 99),
+                    "metric_label": row.get("metric_label") or "",
+                    "regions": [],
+                    "districts": [],
+                },
+            )
+            item_key = (
+                segment_key,
+                row.get("level") or "",
+                row.get("parent_name") or "",
+                row.get("name") or "",
+            )
+            avg_value = float(row.get("avg_value") or 0)
+            item = {
+                "name": row.get("name") or "Noma'lum",
+                "parent": row.get("parent_name") or "",
+                "level": row.get("level") or "region",
+                "value": round(avg_value, 2),
+                "display": self._format_trend_money(avg_value, "UZS", row.get("metric_label") or ""),
+                "count": int(row.get("listing_count") or 0),
+                "listings": listings_by_key.get(item_key, []),
+            }
+            if row.get("level") == "district":
+                segment["districts"].append(item)
+            else:
+                segment["regions"].append(item)
+
+        default_segments = [
+            ("apartment_sale", "Kvartira sotuv", 1, "O'rtacha m2 narxi"),
+            ("house_sale", "Hovli sotuv", 2, "O'rtacha sotix narxi"),
+            ("apartment_rent", "Kvartira ijara", 3, "O'rtacha narx"),
+            ("house_rent", "Hovli ijara", 4, "O'rtacha narx"),
+        ]
+        for key, label, order, metric_label in default_segments:
+            segment_map.setdefault(
+                key,
+                {
+                    "key": key,
+                    "label": label,
+                    "order": order,
+                    "metric_label": metric_label,
+                    "regions": [],
+                    "districts": [],
+                },
+            )
+
+        segments = sorted(segment_map.values(), key=lambda item: item["order"])
+        for segment in segments:
+            for key in ("regions", "districts"):
+                segment[key] = sorted(segment[key], key=lambda item: item["value"], reverse=True)[:12]
+        return {"segments": segments}
 
     def _market_trend_sql(self, filters: MarketInsightFilters) -> dict[str, str]:
         metric = filters.metric
         if metric == "auto" and filters.deal_type == "rent":
             metric = "avg_price"
+        elif metric == "auto" and filters.deal_type == "sale" and filters.property_type == "house":
+            metric = "avg_price_sotix"
         elif metric == "auto" and filters.property_type == "apartment":
             metric = "avg_price_m2"
         elif metric == "auto":
             metric = "avg_price"
 
         if metric == "avg_price_m2":
+            price_uzs_expr = self._price_uzs_expression()
             return {
                 "label": "O'rtacha m2 narxi",
-                "value_expression": "price_value / nullif(area_m2, 0)",
-                "extra_predicate": "and area_m2 is not null and area_m2 > 0",
+                "value_expression": f"{price_uzs_expr} / nullif(area_m2, 0)",
+                "extra_predicate": "and area_m2 is not null and area_m2 >= 10 and area_m2 <= 1000",
+            }
+
+        if metric == "avg_price_sotix":
+            price_uzs_expr = self._price_uzs_expression()
+            return {
+                "label": "O'rtacha sotix narxi",
+                "value_expression": f"{price_uzs_expr} / nullif(land_sotix, 0)",
+                "extra_predicate": "and land_sotix is not null and land_sotix > 0",
             }
 
         return {
             "label": "O'rtacha narx",
-            "value_expression": "price_value",
+            "value_expression": self._price_uzs_expression(),
             "extra_predicate": "",
         }
 
@@ -1021,7 +1621,15 @@ class ListingRepository:
             rooms=base_filters.rooms,
             currency_code=base_filters.currency_code,
             metric=metric,
+            chart_mode=base_filters.chart_mode,
             days=base_filters.days,
+            period_mode=base_filters.period_mode,
+            date_from=base_filters.date_from,
+            date_to=base_filters.date_to,
+            price_min=base_filters.price_min,
+            price_max=base_filters.price_max,
+            area_min=base_filters.area_min,
+            area_max=base_filters.area_max,
         )
         where_sql, params = self._build_market_where_clause(segment_filters)
         trend = self._market_trend_sql(segment_filters)
@@ -1036,12 +1644,14 @@ class ListingRepository:
         rows = self._query_market_trend_rows(conn, where_sql, params, segment_filters, trend)
         chart = self._prepare_line_chart(rows, segment_filters, trend["label"])
         chart["raw_rows"] = rows
+        listing_total = sum(int(row.get("listing_count") or 0) for row in rows)
         return {
             "title": title,
             "badge": badge,
             "accent": accent,
             "filters": segment_filters,
             "chart": chart,
+            "listing_total": listing_total,
         }
 
     def _prepare_market_map(
@@ -1049,6 +1659,11 @@ class ListingRepository:
         points: list[dict[str, Any]],
         filters: MarketInsightFilters,
     ) -> dict[str, Any]:
+        metric_field = "median_rent" if filters.deal_type == "rent" else "median_sale_m2"
+        metric_label = "Ijara median narxi" if filters.deal_type == "rent" else "Sotuv median m2 narxi"
+        metric_suffix = "" if filters.deal_type == "rent" else " / m2"
+
+        district_metrics: list[dict[str, Any]] = []
         clean_points = [
             {
                 "label": row.get("label") or "Noma'lum",
@@ -1057,10 +1672,36 @@ class ListingRepository:
                 "total": int(row.get("total") or 0),
                 "sale_total": int(row.get("sale_total") or 0),
                 "rent_total": int(row.get("rent_total") or 0),
+                "metric_value": float(row.get(metric_field) or row.get("median_price") or 0),
+                "metric_display": self._format_trend_money(
+                    float(row.get(metric_field) or row.get("median_price") or 0),
+                    filters.currency_code,
+                    metric_label,
+                )
+                if (row.get(metric_field) or row.get("median_price"))
+                else "-",
             }
             for row in points
             if row.get("lat") is not None and row.get("lon") is not None
         ]
+        for point in clean_points:
+            district_key = self._tashkent_district_key(point["label"])
+            if district_key and point["metric_value"] > 0:
+                district_metrics.append(
+                    {
+                        "key": district_key,
+                        "label": point["label"],
+                        "total": point["total"],
+                        "sale_total": point["sale_total"],
+                        "rent_total": point["rent_total"],
+                        "metric_value": point["metric_value"],
+                        "metric_display": point["metric_display"],
+                    }
+                )
+
+        metric_values = [row["metric_value"] for row in district_metrics if row["metric_value"] > 0]
+        min_metric = min(metric_values) if metric_values else None
+        max_metric = max(metric_values) if metric_values else None
         if clean_points:
             center_lat = sum(point["lat"] for point in clean_points) / len(clean_points)
             center_lon = sum(point["lon"] for point in clean_points) / len(clean_points)
@@ -1072,10 +1713,68 @@ class ListingRepository:
 
         return {
             "points": clean_points,
+            "districts": district_metrics,
             "center_lat": round(center_lat, 6),
             "center_lon": round(center_lon, 6),
             "zoom": zoom,
+            "geojson_url": "/static/tashkent_districts.geojson",
+            "metric_label": metric_label,
+            "metric_suffix": metric_suffix,
+            "currency_code": filters.currency_code,
+            "min_display": self._format_trend_money(min_metric, filters.currency_code, metric_label)
+            if min_metric is not None
+            else "-",
+            "max_display": self._format_trend_money(max_metric, filters.currency_code, metric_label)
+            if max_metric is not None
+            else "-",
         }
+
+    def _tashkent_district_key(self, value: str | None) -> str:
+        if not value:
+            return ""
+        normalized = (
+            value.lower()
+            .replace("ё", "е")
+            .replace("'", "")
+            .replace("`", "")
+            .replace("ʻ", "")
+            .replace("’", "")
+            .replace("-", " ")
+        )
+        for removable in (" district", " tumani", "ский район", " район"):
+            normalized = normalized.replace(removable, "")
+        normalized = " ".join(normalized.split())
+        aliases = {
+            "bektemir": "bektemir",
+            "бектемир": "bektemir",
+            "chilonzor": "chilonzor",
+            "чиланзар": "chilonzor",
+            "mirobod": "mirobod",
+            "мирабад": "mirobod",
+            "mirzo ulugbek": "mirzo_ulugbek",
+            "mirzo ulug bek": "mirzo_ulugbek",
+            "мирзо улугбек": "mirzo_ulugbek",
+            "olmazor": "olmazor",
+            "алмазар": "olmazor",
+            "sergeli": "sergeli",
+            "сергели": "sergeli",
+            "сергелий": "sergeli",
+            "сергилий": "sergeli",
+            "shayxontohur": "shayxontohur",
+            "шайхантахур": "shayxontohur",
+            "uchtepa": "uchtepa",
+            "учтепин": "uchtepa",
+            "yakkasaroy": "yakkasaroy",
+            "яккасарай": "yakkasaroy",
+            "yangihayot": "yangihayot",
+            "янгихаёт": "yangihayot",
+            "янгихаят": "yangihayot",
+            "yashnobod": "yashnobod",
+            "яшнабад": "yashnobod",
+            "yunusobod": "yunusobod",
+            "юнусабад": "yunusobod",
+        }
+        return aliases.get(normalized, "")
 
     def _query_market_trend_rows(
         self,
@@ -1087,167 +1786,87 @@ class ListingRepository:
     ) -> list[dict[str, Any]]:
         rows = conn.execute(
             f"""
-            with days as (
-                select generate_series(
-                    current_date - (%(days)s::int - 1) * interval '1 day',
-                    current_date,
-                    interval '1 day'
-                )::date as day
-            ),
-            filtered as (
+            with filtered as (
                 select
                     coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as day,
-                    {trend["value_expression"]} as metric_value,
-                    coalesce(city_name, '') as city_key,
-                    coalesce(district_name, '') as district_key,
-                    coalesce(property_type, '') as property_key,
-                    coalesce(deal_type, '') as deal_key,
-                    coalesce(currency_code, '') as currency_key,
-                    coalesce(room_count::text, '') as room_key
+                    {trend["value_expression"]} as metric_value
                 from real_estate_listings
                 {where_sql}
-                  and currency_code = %(currency_code)s
                   and price_value is not null
                   and price_value > 0
                   {trend["extra_predicate"]}
             ),
-            segment_stats as (
+            bounds as (
                 select
-                    city_key,
-                    district_key,
-                    property_key,
-                    deal_key,
-                    currency_key,
-                    room_key,
-                    count(*) as sample_count,
-                    percentile_cont(0.25) within group (order by metric_value) as q1_value,
-                    percentile_cont(0.50) within group (order by metric_value) as median_value,
-                    percentile_cont(0.75) within group (order by metric_value) as q3_value
+                    coalesce(min(day), current_date) as start_day,
+                    coalesce(max(day), current_date) as end_day
                 from filtered
-                group by city_key, district_key, property_key, deal_key, currency_key, room_key
             ),
-            listing_scored as (
-                select
-                    filtered.*,
-                    case
-                        when stats.sample_count >= 8
-                         and stats.median_value > 0
-                         and (
-                            (
-                                stats.q3_value > stats.q1_value
-                                and (
-                                    filtered.metric_value > stats.q3_value + (stats.q3_value - stats.q1_value) * 1.25
-                                    or filtered.metric_value < greatest(0, stats.q1_value - (stats.q3_value - stats.q1_value) * 1.25)
-                                )
-                            )
-                            or filtered.metric_value > stats.median_value * 2
-                            or filtered.metric_value < stats.median_value / 2
-                         )
-                        then true
-                        else false
-                    end as is_listing_anomaly
-                from filtered
-                join segment_stats stats
-                  on stats.city_key = filtered.city_key
-                 and stats.district_key = filtered.district_key
-                 and stats.property_key = filtered.property_key
-                 and stats.deal_key = filtered.deal_key
-                 and stats.currency_key = filtered.currency_key
-                 and stats.room_key = filtered.room_key
+            days as (
+                select generate_series(
+                    bounds.start_day,
+                    bounds.end_day,
+                    interval '1 day'
+                )::date as day
+                from bounds
             ),
-            daily_segments as (
+            daily_values as (
                 select
                     day,
-                    city_key,
-                    district_key,
-                    property_key,
-                    deal_key,
-                    currency_key,
-                    room_key,
-                    avg(metric_value) filter (where is_listing_anomaly is false) as segment_avg,
-                    count(*) filter (where is_listing_anomaly is false) as segment_count,
-                    count(*) filter (where is_listing_anomaly) as listing_anomaly_count
-                from listing_scored
-                group by day, city_key, district_key, property_key, deal_key, currency_key, room_key
-            ),
-            with_neighbors as (
-                select
-                    current.*,
-                    (
-                        select sum(peer.segment_avg * peer.segment_count) / nullif(sum(peer.segment_count), 0)
-                        from daily_segments peer
-                        where peer.city_key = current.city_key
-                          and peer.district_key = current.district_key
-                          and peer.property_key = current.property_key
-                          and peer.deal_key = current.deal_key
-                          and peer.currency_key = current.currency_key
-                          and peer.room_key = current.room_key
-                          and peer.day between current.day - interval '2 days' and current.day + interval '2 days'
-                          and peer.day <> current.day
-                          and peer.segment_avg is not null
-                    ) as neighbor_avg,
-                    (
-                        select coalesce(sum(peer.segment_count), 0)
-                        from daily_segments peer
-                        where peer.city_key = current.city_key
-                          and peer.district_key = current.district_key
-                          and peer.property_key = current.property_key
-                          and peer.deal_key = current.deal_key
-                          and peer.currency_key = current.currency_key
-                          and peer.room_key = current.room_key
-                          and peer.day between current.day - interval '2 days' and current.day + interval '2 days'
-                          and peer.day <> current.day
-                          and peer.segment_avg is not null
-                    ) as neighbor_count
-                from daily_segments current
-            ),
-            clean_segments as (
-                select
-                    *,
-                    case
-                        when neighbor_count >= 5
-                         and neighbor_avg > 0
-                         and (
-                            (
-                                segment_count <= 2
-                                and (
-                                    segment_avg > neighbor_avg * 1.8
-                                    or segment_avg < neighbor_avg / 1.8
-                                )
-                            )
-                            or (
-                                segment_count >= 3
-                                and (
-                                    segment_avg > neighbor_avg * 2.0
-                                    or segment_avg < neighbor_avg / 2.0
-                                )
-                            )
-                         )
-                        then true
-                        else false
-                    end as is_anomaly
-                from with_neighbors
+                    avg(metric_value) as avg_value,
+                    count(*) as listing_count
+                from filtered
+                where metric_value is not null and metric_value > 0
+                group by day
             )
             select
                 days.day,
                 to_char(days.day, 'DD.MM') as label,
-                sum(clean_segments.segment_avg * clean_segments.segment_count)
-                    filter (where clean_segments.is_anomaly is false and clean_segments.segment_avg is not null)
-                    / nullif(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly is false), 0)
-                    as avg_value,
-                coalesce(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly is false), 0)
-                    as listing_count,
-                coalesce(sum(clean_segments.listing_anomaly_count), 0)
-                    + coalesce(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly), 0)
-                    as anomaly_count
+                daily_values.avg_value,
+                coalesce(daily_values.listing_count, 0) as listing_count,
+                0 as anomaly_count
             from days
-            left join clean_segments on clean_segments.day = days.day
+            left join daily_values on daily_values.day = days.day
             group by days.day
+                , daily_values.avg_value
+                , daily_values.listing_count
             order by days.day
             """,
-            {**params, "currency_code": filters.currency_code, "days": filters.days},
+            {**params, "currency_code": filters.currency_code},
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def _prepare_price_segment_bars(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        grouped: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            label = row.get("segment_label") or "Segment"
+            segment = grouped.setdefault(
+                label,
+                {
+                    "label": label,
+                    "order": int(row.get("segment_order") or 99),
+                    "total": 0,
+                    "bands": [],
+                },
+            )
+            total = int(row.get("total") or 0)
+            segment["total"] += total
+            segment["bands"].append(
+                {
+                    "label": row.get("band_label") or "-",
+                    "order": int(row.get("band_order") or 99),
+                    "total": total,
+                    "pct": 0,
+                }
+            )
+
+        prepared = sorted(grouped.values(), key=lambda item: item["order"])
+        for segment in prepared:
+            max_total = max((band["total"] for band in segment["bands"]), default=0)
+            segment["bands"] = sorted(segment["bands"], key=lambda item: item["order"])
+            for band in segment["bands"]:
+                band["pct"] = round((band["total"] / max_total) * 100, 1) if max_total else 0
+        return prepared
 
     def _prepare_line_chart(
         self,
@@ -1280,6 +1899,7 @@ class ListingRepository:
                 "y_max_display": "-",
                 "y_min_short": "-",
                 "y_max_short": "-",
+                "y_mid_short": "-",
                 "anomaly_total": anomaly_total,
                 "width": width,
                 "height": height,
@@ -1294,6 +1914,7 @@ class ListingRepository:
         usable_width = width - pad_left - pad_right
         usable_height = height - pad_top - pad_bottom
         denominator = max(len(rows) - 1, 1)
+        bar_width = max(4, min(12, usable_width / max(len(rows), 1) * 0.46))
 
         points: list[dict[str, Any]] = []
         polyline_parts: list[str] = []
@@ -1319,6 +1940,10 @@ class ListingRepository:
                     {
                         "x": round(x, 2),
                         "y": None,
+                        "bar_x": round(x - (bar_width / 2), 2),
+                        "bar_y": None,
+                        "bar_width": round(bar_width, 2),
+                        "bar_height": 0,
                         "moving_y": round(moving_y, 2) if moving_y is not None else None,
                         "label": row["label"],
                         "display": "-",
@@ -1332,9 +1957,15 @@ class ListingRepository:
 
             value = float(raw_value)
             y = pad_top + ((y_max - value) / (y_max - y_min) * usable_height)
+            bar_y = min(y, pad_top + usable_height)
+            bar_height = max(2, (pad_top + usable_height) - bar_y)
             point = {
                 "x": round(x, 2),
                 "y": round(y, 2),
+                "bar_x": round(x - (bar_width / 2), 2),
+                "bar_y": round(bar_y, 2),
+                "bar_width": round(bar_width, 2),
+                "bar_height": round(bar_height, 2),
                 "moving_y": round(moving_y, 2) if moving_y is not None else None,
                 "label": row["label"],
                 "display": self._format_trend_money(value, filters.currency_code, metric_label),
@@ -1351,6 +1982,7 @@ class ListingRepository:
         average_value = sum(values) / len(values)
         latest_moving_average = self._last_moving_average(rows, window=7)
         average_y = pad_top + ((y_max - average_value) / (y_max - y_min) * usable_height)
+        y_mid = (y_min + y_max) / 2
         return {
             "metric_label": metric_label,
             "currency_code": filters.currency_code,
@@ -1373,6 +2005,7 @@ class ListingRepository:
             "y_max_display": self._format_trend_money(y_max, filters.currency_code, metric_label),
             "y_min_short": self._format_compact_money(y_min, filters.currency_code, metric_label),
             "y_max_short": self._format_compact_money(y_max, filters.currency_code, metric_label),
+            "y_mid_short": self._format_compact_money(y_mid, filters.currency_code, metric_label),
             "anomaly_total": anomaly_total,
             "width": width,
             "height": height,
@@ -1534,7 +2167,7 @@ class ListingRepository:
         return f"{amount:,.0f}"
 
     def _format_trend_money(self, value: float, currency_code: str | None, metric_label: str) -> str:
-        suffix = " / m2" if "m2" in metric_label else ""
+        suffix = " / sotix" if "sotix" in metric_label else " / m2" if "m2" in metric_label else ""
         if currency_code == "USD":
             return f"${value:,.0f}{suffix}"
         if currency_code == "UZS":
@@ -1542,7 +2175,7 @@ class ListingRepository:
         return f"{value:,.0f}{suffix}"
 
     def _format_compact_money(self, value: float, currency_code: str | None, metric_label: str) -> str:
-        suffix = "/m2" if "m2" in metric_label else ""
+        suffix = "/sotix" if "sotix" in metric_label else "/m2" if "m2" in metric_label else ""
         abs_value = abs(value)
         if abs_value >= 1_000_000_000:
             amount = f"{value / 1_000_000_000:.1f}B"

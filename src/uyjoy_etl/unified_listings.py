@@ -88,6 +88,10 @@ select
             then replace(param_values -> 'total_area' ->> 'normalizedValue', ',', '.')::numeric
     end as area_m2,
     case
+        -- OLX uy/hovli kategoriyasida yer maydoni ko'pincha `plot`
+        -- parametrida keladi; eski importlar uchun `land_area` ham qo'llab-quvvatlanadi.
+        when (param_values -> 'plot' ->> 'normalizedValue') ~ '^[0-9]+([.,][0-9]+)?$'
+            then replace(param_values -> 'plot' ->> 'normalizedValue', ',', '.')::numeric
         when (param_values -> 'land_area' ->> 'normalizedValue') ~ '^[0-9]+([.,][0-9]+)?$'
             then replace(param_values -> 'land_area' ->> 'normalizedValue', ',', '.')::numeric
     end as land_sotix,

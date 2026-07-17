@@ -4,6 +4,7 @@ import csv
 import io
 import os
 import secrets
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -142,9 +143,17 @@ def analytics(
     city: str = "",
     district: str = "",
     rooms: str = "",
-    currency_code: str = "USD",
+    currency_code: str = "UZS",
     metric: str = "auto",
+    chart_mode: str = "avg7",
     days: int = Query(default=60, ge=14, le=180),
+    period_mode: str = "all",
+    date_from: str = "",
+    date_to: str = "",
+    price_min: str = "",
+    price_max: str = "",
+    area_min: str = "",
+    area_max: str = "",
 ) -> HTMLResponse:
     filters = MarketInsightFilters(
         deal_type=deal_type.strip(),
@@ -152,9 +161,17 @@ def analytics(
         city=city.strip(),
         district=district.strip(),
         rooms=rooms.strip(),
-        currency_code=currency_code.strip().upper() or "USD",
+        currency_code="UZS",
         metric=metric.strip(),
+        chart_mode=chart_mode.strip(),
         days=days,
+        period_mode=period_mode.strip(),
+        date_from=_parse_optional_date(date_from),
+        date_to=_parse_optional_date(date_to),
+        price_min=parse_decimal(price_min),
+        price_max=parse_decimal(price_max),
+        area_min=parse_decimal(area_min),
+        area_max=parse_decimal(area_max),
     )
     try:
         insights = repository.get_market_insights(filters)
@@ -183,9 +200,17 @@ def market_dashboard(
     city: str = "",
     district: str = "",
     rooms: str = "",
-    currency_code: str = "USD",
+    currency_code: str = "UZS",
     metric: str = "auto",
+    chart_mode: str = "avg7",
     days: int = Query(default=60, ge=14, le=180),
+    period_mode: str = "all",
+    date_from: str = "",
+    date_to: str = "",
+    price_min: str = "",
+    price_max: str = "",
+    area_min: str = "",
+    area_max: str = "",
 ) -> HTMLResponse:
     filters = MarketInsightFilters(
         deal_type=deal_type.strip(),
@@ -193,9 +218,17 @@ def market_dashboard(
         city=city.strip(),
         district=district.strip(),
         rooms=rooms.strip(),
-        currency_code=currency_code.strip().upper() or "USD",
+        currency_code="UZS",
         metric=metric.strip(),
+        chart_mode=chart_mode.strip(),
         days=days,
+        period_mode=period_mode.strip(),
+        date_from=_parse_optional_date(date_from),
+        date_to=_parse_optional_date(date_to),
+        price_min=parse_decimal(price_min),
+        price_max=parse_decimal(price_max),
+        area_min=parse_decimal(area_min),
+        area_max=parse_decimal(area_max),
     )
     try:
         insights = repository.get_market_insights(filters)
@@ -312,6 +345,19 @@ def _friendly_error(exc: Exception) -> str:
     return f"Databasega ulanish yoki query bajarishda xato: {exc}"
 
 
+def _parse_optional_date(value: str | date | None) -> date | None:
+    """Query stringdagi bo'sh date inputlarni FastAPI 422siz qabul qilish uchun."""
+
+    if isinstance(value, date):
+        return value
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError:
+        return None
+
+
 def _empty_admin_overview() -> dict[str, object]:
     return {
         "olx": {},
@@ -347,7 +393,11 @@ def _empty_market_insights() -> dict[str, object]:
         "area_bands": [],
         "usd_price_bands": [],
         "price_summary": [],
+        "regional_summary": [],
+        "price_segment_bars": [],
+        "segment_price_cards": [],
         "daily_supply": [],
+        "market_comparison": {"segments": []},
         "price_trend": {
             "metric_label": "",
             "currency_code": "",

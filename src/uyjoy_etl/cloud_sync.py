@@ -18,6 +18,45 @@ TELEGRAM_TABLES = (
     "telegram_real_estate_posts",
 )
 
+REAL_ESTATE_LISTING_COLUMNS = (
+    "source",
+    "source_listing_id",
+    "listing_code",
+    "source_url",
+    "source_name",
+    "source_category",
+    "title",
+    "description",
+    "property_type",
+    "deal_type",
+    "price_display",
+    "price_value",
+    "currency_code",
+    "is_price_negotiable",
+    "city_name",
+    "district_name",
+    "region_name",
+    "neighborhood",
+    "address",
+    "latitude",
+    "longitude",
+    "room_count",
+    "floor_number",
+    "total_floors",
+    "area_m2",
+    "land_sotix",
+    "seller_type",
+    "is_business",
+    "has_media",
+    "views",
+    "quality_status",
+    "quality_reasons",
+    "posted_at",
+    "first_seen_at",
+    "last_seen_at",
+    "updated_at",
+)
+
 
 def sync_cloud_database(
     local_database: Database,
@@ -66,6 +105,80 @@ def sync_cloud_database(
         "unified_telegram": unified_summary.telegram_rows,
         **telegram_counts,
     }
+
+
+def sync_dashboard_database(
+    local_database: Database,
+    cloud_database_url: str,
+    schema_path: Path,
+) -> dict[str, int]:
+    """Render dashboard uchun faqat tayyor warehouse jadvalini cloudga yuboradi.
+
+    Neon free tierda katta raw JSON jadvallar tez joy egallaydi. Web dashboard,
+    Power BI va analytics sahifalar esa `real_estate_listings` jadvalidan
+    o'qiydi, shuning uchun deploy uchun shu yengil sync yetarli.
+    """
+
+    cloud_database = Database(
+        DatabaseConfig(
+            host="",
+            port=5432,
+            database="",
+            user="",
+            password="",
+            connection_url=cloud_database_url,
+        )
+    )
+
+    cloud_database.run_schema(schema_path)
+    with cloud_database.connect() as target:
+        target.execute("drop index if exists idx_re_listings_desc_trgm")
+        target.execute(
+            "truncate table real_estate_listings, olx_listing_raw, telegram_real_estate_posts, "
+            "telegram_posts, telegram_channels restart identity cascade"
+        )
+        target.commit()
+
+    rows = _copy_real_estate_listings(local_database, cloud_database)
+    return {"dashboard_rows": rows}
+
+
+def _copy_real_estate_listings(local_database: Database, cloud_database: Database) -> int:
+    columns_sql = ", ".join(f'"{column}"' for column in REAL_ESTATE_LISTING_COLUMNS)
+    placeholders = ", ".join(["%s"] * len(REAL_ESTATE_LISTING_COLUMNS))
+    insert_sql = f'insert into real_estate_listings ({columns_sql}) values ({placeholders})'
+
+    total = 0
+    batch: list[tuple[Any, ...]] = []
+    with local_database.connect() as source, cloud_database.connect() as target:
+        with source.cursor(name="sync_real_estate_listings", row_factory=dict_row) as cursor:
+            cursor.itersize = 1000
+            cursor.execute(f"select {columns_sql} from real_estate_listings order by id")
+            for row in cursor:
+                batch.append(
+                    tuple(
+                        _adapt_dashboard_value(column, row[column])
+                        for column in REAL_ESTATE_LISTING_COLUMNS
+                    )
+                )
+                if len(batch) >= 1000:
+                    total += _insert_batch(target, insert_sql, batch)
+                    target.commit()
+                    batch.clear()
+
+        if batch:
+            total += _insert_batch(target, insert_sql, batch)
+            target.commit()
+
+    return total
+
+
+def _adapt_dashboard_value(column: str, value: Any) -> Any:
+    if column == "quality_reasons":
+        return _adapt_value(value, True)
+    if column == "description" and isinstance(value, str):
+        return value[:800]
+    return value
 
 
 def _sync_telegram_tables(local_database: Database, cloud_database: Database) -> dict[str, int]:

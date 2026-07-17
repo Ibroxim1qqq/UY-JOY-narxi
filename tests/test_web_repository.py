@@ -90,11 +90,19 @@ class WebRepositoryTest(unittest.TestCase):
         apartment_trend = repository._market_trend_sql(
             MarketInsightFilters(property_type="apartment", metric="auto")
         )
+        house_sale_trend = repository._market_trend_sql(
+            MarketInsightFilters(deal_type="sale", property_type="house", metric="auto")
+        )
 
-        self.assertEqual(rent_trend["value_expression"], "price_value")
+        self.assertIn("currency_code = 'USD'", rent_trend["value_expression"])
+        self.assertIn("12093.35", rent_trend["value_expression"])
         self.assertIn("area_m2", apartment_trend["extra_predicate"])
+        self.assertIn("area_m2 >= 10", apartment_trend["extra_predicate"])
+        self.assertIn("area_m2 <= 1000", apartment_trend["extra_predicate"])
+        self.assertIn("land_sotix", house_sale_trend["extra_predicate"])
+        self.assertEqual(house_sale_trend["label"], "O'rtacha sotix narxi")
 
-    def test_market_trend_query_scores_listing_level_outliers(self) -> None:
+    def test_market_trend_query_converts_prices_and_keeps_daily_counts(self) -> None:
         repository = ListingRepository(database=None)  # type: ignore[arg-type]
         capture = _QueryCapture()
 
@@ -106,10 +114,28 @@ class WebRepositoryTest(unittest.TestCase):
             repository._market_trend_sql(MarketInsightFilters(metric="avg_price_m2")),
         )
 
-        self.assertIn("segment_stats", capture.sql)
-        self.assertIn("percentile_cont(0.25)", capture.sql)
-        self.assertIn("is_listing_anomaly", capture.sql)
-        self.assertIn("room_key", capture.sql)
+        self.assertIn("currency_code = 'USD'", capture.sql)
+        self.assertIn("12093.35", capture.sql)
+        self.assertIn("listing_count", capture.sql)
+        self.assertNotIn("currency_code = %(currency_code)s", capture.sql)
+
+    def test_market_where_clause_applies_price_and_area_filters(self) -> None:
+        repository = ListingRepository(database=None)  # type: ignore[arg-type]
+
+        where_sql, params = repository._build_market_where_clause(
+            MarketInsightFilters(
+                price_min=Decimal("100000000"),
+                price_max=Decimal("500000000"),
+                area_min=Decimal("40"),
+                area_max=Decimal("90"),
+            )
+        )
+
+        self.assertIn("currency_code = 'USD'", where_sql)
+        self.assertIn("market_price_min", params)
+        self.assertIn("market_price_max", params)
+        self.assertIn("area_m2 >= %(market_area_min)s", where_sql)
+        self.assertIn("area_m2 <= %(market_area_max)s", where_sql)
 
     def test_smooth_svg_path_uses_curves_for_three_or_more_points(self) -> None:
         repository = ListingRepository(database=None)  # type: ignore[arg-type]
@@ -118,6 +144,14 @@ class WebRepositoryTest(unittest.TestCase):
 
         self.assertTrue(path.startswith("M 70 120"))
         self.assertIn(" C ", path)
+
+    def test_format_trend_money_supports_sotix_suffix(self) -> None:
+        repository = ListingRepository(database=None)  # type: ignore[arg-type]
+
+        self.assertEqual(
+            repository._format_trend_money(1234567, "UZS", "O'rtacha sotix narxi"),
+            "1,234,567 so'm / sotix",
+        )
 
 
 if __name__ == "__main__":

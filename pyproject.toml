@@ -21,4 +21,4 @@ dependencies = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-uyjoy_etl = ["templates/*.html", "static/*.css"]
+uyjoy_etl = ["templates/*.html", "static/*.css", "static/*.geojson"]

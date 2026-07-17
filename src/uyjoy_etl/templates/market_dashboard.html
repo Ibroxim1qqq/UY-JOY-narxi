@@ -32,7 +32,16 @@
         </div>
 
         <label>
-          <span>Davr</span>
+          <span>Davr turi</span>
+          <select name="period_mode" id="marketPeriodMode">
+            <option value="all" {% if insights.filters.period_mode == "all" %}selected{% endif %}>Umumiy</option>
+            <option value="relative" {% if insights.filters.period_mode == "relative" %}selected{% endif %}>Oxirgi kunlar</option>
+            <option value="fixed" {% if insights.filters.period_mode == "fixed" %}selected{% endif %}>Kalendar orqali</option>
+          </select>
+        </label>
+
+        <label data-period-panel="relative" class="{% if insights.filters.period_mode != 'relative' %}is-hidden{% endif %}">
+          <span>Oxirgi davr</span>
           <select name="days">
             {% for day_count in [30, 60, 90, 180] %}
               <option value="{{ day_count }}" {% if insights.filters.days == day_count %}selected{% endif %}>
@@ -41,6 +50,14 @@
             {% endfor %}
           </select>
         </label>
+
+        <div class="market-date-range {% if insights.filters.period_mode != 'fixed' %}is-hidden{% endif %}" data-period-panel="fixed">
+          <span>Kalendar oralig'i</span>
+          <div>
+            <input type="date" name="date_from" value="{{ insights.filters.date_from or '' }}">
+            <input type="date" name="date_to" value="{{ insights.filters.date_to or '' }}">
+          </div>
+        </div>
 
         <div class="market-check-card">
           <span>Bitim turi</span>
@@ -92,22 +109,13 @@
           </select>
         </label>
 
-        <label>
-          <span>Valyuta</span>
-          <select name="currency_code">
-            {% for item in insights.facets.currencies %}
-              <option value="{{ item.value }}" {% if insights.filters.currency_code == item.value %}selected{% endif %}>
-                {{ item.value }}
-              </option>
-            {% endfor %}
-          </select>
-        </label>
+        <input type="hidden" name="currency_code" value="UZS">
 
         <div class="market-range-control">
           <span>Narx oralig'i</span>
           <div>
-            <input type="number" name="price_min" placeholder="0">
-            <input type="number" name="price_max" placeholder="50 M+">
+            <input type="number" name="price_min" value="{{ insights.filters.price_min or '' }}" placeholder="0">
+            <input type="number" name="price_max" value="{{ insights.filters.price_max or '' }}" placeholder="50 M+">
           </div>
           <b></b>
         </div>
@@ -115,13 +123,28 @@
         <div class="market-range-control">
           <span>Maydon (m2)</span>
           <div>
-            <input type="number" name="area_min" placeholder="0">
-            <input type="number" name="area_max" placeholder="500+">
+            <input type="number" name="area_min" value="{{ insights.filters.area_min or '' }}" placeholder="0">
+            <input type="number" name="area_max" value="{{ insights.filters.area_max or '' }}" placeholder="500+">
           </div>
           <b></b>
         </div>
 
-        <input type="hidden" name="metric" value="{{ insights.filters.metric }}">
+        <label>
+          <span>Narx metrikasi</span>
+          <select name="metric">
+            <option value="auto" {% if insights.filters.metric == "auto" %}selected{% endif %}>Auto</option>
+            <option value="avg_price" {% if insights.filters.metric == "avg_price" %}selected{% endif %}>Umumiy narx</option>
+            <option value="avg_price_m2" {% if insights.filters.metric == "avg_price_m2" %}selected{% endif %}>m2 narxi</option>
+            <option value="avg_price_sotix" {% if insights.filters.metric == "avg_price_sotix" %}selected{% endif %}>sotix narxi</option>
+          </select>
+        </label>
+        <label>
+          <span>Trend ko'rinishi</span>
+          <select name="chart_mode">
+            <option value="avg7" {% if insights.filters.chart_mode == "avg7" %}selected{% endif %}>7 kunlik avg</option>
+            <option value="daily" {% if insights.filters.chart_mode == "daily" %}selected{% endif %}>Kunlik</option>
+          </select>
+        </label>
         <button type="submit" class="market-apply">Qo'llash</button>
       </form>
     </aside>
@@ -152,39 +175,80 @@
             <em>Joriy kesim</em>
           </div>
         </div>
-        <div class="market-kpi kpi-flat">
-          <i>K</i>
-          <div>
-            <span>Kvartira e'lonlari</span>
-            <strong>{{ insights.summary.apartment_total or 0 }}</strong>
-            <em>Xona soni bor</em>
+      </section>
+
+      <section class="market-segment-prices" aria-label="Segmentlar bo'yicha o'rtacha narx">
+        {% for card in insights.segment_price_cards %}
+          <div class="market-card segment-price-card segment-price-card-{{ card.accent }}">
+            <div>
+              <em class="trend-badge trend-badge-{{ card.accent }}">{{ card.title }}</em>
+              <small>{{ card.metric_label }}</small>
+            </div>
+            <strong>{{ card.average_display }}</strong>
+            <p>Oxirgi: {{ card.latest_display }} · {{ card.listing_total }} ta e'lon</p>
           </div>
+        {% endfor %}
+      </section>
+
+      <section class="market-card region-summary-card">
+        <div class="market-section-heading">
+          <h2>Viloyatlar kesimida umumiy holat</h2>
+          <span>Sotuv, ijara, kvartira va hovli sonlari</span>
         </div>
-        <div class="market-kpi kpi-house">
-          <i>H</i>
-          <div>
-            <span>Hovli e'lonlari</span>
-            <strong>{{ insights.summary.house_total or 0 }}</strong>
-            <em>Manzil bilan</em>
-          </div>
+        <div class="market-table-wrap">
+          <table class="market-table market-region-table">
+            <thead>
+              <tr>
+                <th>Viloyat / shahar</th>
+                <th>Jami</th>
+                <th>Sotuv</th>
+                <th>Ijara</th>
+                <th>Kvartira</th>
+                <th>Hovli</th>
+                <th>Median narx</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for region in insights.regional_summary %}
+                <tr>
+                  <td>{{ region.region_name }}</td>
+                  <td>{{ region.total }}</td>
+                  <td>{{ region.sale_total }}</td>
+                  <td>{{ region.rent_total }}</td>
+                  <td>{{ region.apartment_total }}</td>
+                  <td>{{ region.house_total }}</td>
+                  <td>{{ region.median_display }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
         </div>
+      </section>
+
+      <section class="market-card market-comparison-card">
+        <div class="market-section-heading">
+          <h2>Qimmat-arzon segmentlar</h2>
+          <span>Viloyat bo'yicha avg · barni bosing, 3 marta bossangiz manbalar chiqadi</span>
+        </div>
+        <div id="marketComparisonChart" class="market-comparison-chart"></div>
+        <div id="marketComparisonListings" class="market-comparison-listings is-hidden"></div>
+        <script type="application/json" id="marketComparisonData">{{ insights.market_comparison|tojson }}</script>
       </section>
 
       <section class="market-card market-trend-card">
         <div class="market-section-heading">
           <h2>Narx (o'rtacha) trendi bo'yicha dinamikasi</h2>
-          <span>{{ insights.filters.days }} kun, {{ insights.price_trend.currency_code }}</span>
+          <span>{{ insights.filters.period_label }} · {{ "Kunlik" if insights.filters.chart_mode == "daily" else "7 kunlik avg" }}</span>
         </div>
         <div class="market-mini-charts">
           {% for trend in insights.segment_trends %}
             <div class="market-mini-chart">
               <div class="mini-chart-title">
                 <div>
-                  <em class="trend-badge trend-badge-{{ trend.accent }}">{{ trend.badge }}</em>
-                  <b>{{ trend.title }}</b>
+                  <em class="trend-badge trend-badge-{{ trend.accent }}">{{ trend.title }}</em>
                   <span>{{ trend.chart.metric_label }}</span>
                 </div>
-                <small>Haftalik avg</small>
+                <small>{{ "Kunlik" if insights.filters.chart_mode == "daily" else "7 kun avg" }}</small>
               </div>
               {% if trend.chart.points|selectattr("y")|list|length >= 5 %}
                 <svg class="market-line-svg" viewBox="0 0 {{ trend.chart.width }} {{ trend.chart.height }}" aria-label="{{ trend.title }} trendi">
@@ -195,17 +259,43 @@
                     </linearGradient>
                   </defs>
                   <text x="12" y="28" class="market-axis-text">{{ trend.chart.y_max_short }}</text>
+                  <text x="12" y="136" class="market-axis-text">{{ trend.chart.y_mid_short }}</text>
                   <text x="12" y="246" class="market-axis-text">{{ trend.chart.y_min_short }}</text>
+                  <text x="18" y="146" class="market-axis-label market-axis-label-y" transform="rotate(-90 18 146)">Narx</text>
+                  <text x="405" y="276" class="market-axis-label">Sana</text>
                   <line x1="70" y1="24" x2="740" y2="24" class="market-grid-line"></line>
                   <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
                   <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
-                  <polygon points="70,242 {{ trend.chart.polyline }} 740,242" fill="url(#trendFill{{ loop.index }})"></polygon>
-                  <path d="{{ trend.chart.path }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></path>
+                  <line x1="70" y1="24" x2="70" y2="242" class="market-axis-line"></line>
+                  {% for point in trend.chart.points %}
+                    {% if point.show_label and point.y %}
+                      <line x1="{{ point.x }}" y1="242" x2="{{ point.x }}" y2="248" class="market-axis-tick"></line>
+                      <text x="{{ point.x }}" y="262" class="market-axis-date">{{ point.label }}</text>
+                    {% endif %}
+                  {% endfor %}
+                  {% for point in trend.chart.points %}
+                    {% if point.bar_y and insights.filters.chart_mode == "daily" %}
+                      <rect
+                        x="{{ point.bar_x }}"
+                        y="{{ point.bar_y }}"
+                        width="{{ point.bar_width }}"
+                        height="{{ point.bar_height }}"
+                        rx="3"
+                        class="market-daily-price-bar {% if trend.accent == 'blue' %}market-daily-price-bar-blue{% endif %}"
+                      >
+                        <title>{{ point.label }} | Kunlik narx: {{ point.display }} | {{ point.count }} ta e'lon</title>
+                      </rect>
+                    {% endif %}
+                  {% endfor %}
+                  {% if insights.filters.chart_mode == "daily" %}
+                    <polygon points="70,242 {{ trend.chart.polyline }} 740,242" fill="url(#trendFill{{ loop.index }})"></polygon>
+                    <path d="{{ trend.chart.path }}" class="market-main-line market-daily-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></path>
+                  {% endif %}
                   {% if trend.chart.moving_average_path %}
                     <path d="{{ trend.chart.moving_average_path }}" class="market-smooth-line"></path>
                   {% endif %}
                   {% for point in trend.chart.points %}
-                    {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
+                    {% if insights.filters.chart_mode == "daily" and point.y and (loop.index0 % 4 == 0 or loop.last) %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
                         <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | {{ point.count }} ta e'lon asosida</title>
                       </circle>
@@ -213,23 +303,24 @@
                   {% endfor %}
                   {% for point in trend.chart.points %}
                     {% if point.y %}
-                      {% set tooltip_x = -128 %}
+                      {% set tooltip_x = -146 %}
                       {% if point.x < 160 %}
                         {% set tooltip_x = 10 %}
                       {% elif point.x > 610 %}
-                        {% set tooltip_x = -266 %}
+                        {% set tooltip_x = -306 %}
                       {% endif %}
-                      {% set tooltip_y = -84 %}
-                      {% if point.y < 96 %}
+                      {% set tooltip_y = -102 %}
+                      {% if point.y < 116 %}
                         {% set tooltip_y = 16 %}
                       {% endif %}
                       <g class="market-tooltip-anchor" transform="translate({{ point.x }}, {{ point.y }})">
-                        <circle cx="0" cy="0" r="8" class="market-hover-point" aria-label="{{ point.label }} {{ point.display }} {{ point.count }} ta e'lon"></circle>
+                        <circle cx="0" cy="0" r="10" class="market-hover-point" aria-label="{{ point.label }} {{ point.display }} {{ point.count }} ta e'lon"></circle>
                         <g class="market-chart-tooltip" transform="translate({{ tooltip_x }}, {{ tooltip_y }})">
-                          <rect x="0" y="0" width="256" height="74" rx="10"></rect>
-                          <text x="12" y="23">{{ point.label }} | {{ point.display }}</text>
-                          <text x="12" y="46">Haftalik avg: {{ point.moving_display }}</text>
-                          <text x="12" y="65">{{ point.count }} ta e'lon asosida</text>
+                          <rect x="0" y="0" width="292" height="92" rx="10"></rect>
+                          <text x="12" y="23">{{ point.label }}</text>
+                          <text x="12" y="46">Kunlik: {{ point.display }}</text>
+                          <text x="12" y="65">Haftalik avg: {{ point.moving_display }}</text>
+                          <text x="12" y="84">{{ point.count }} ta e'lon asosida</text>
                         </g>
                       </g>
                     {% endif %}
@@ -244,17 +335,43 @@
                     </linearGradient>
                   </defs>
                   <text x="12" y="28" class="market-axis-text">{{ insights.price_trend.y_max_short }}</text>
+                  <text x="12" y="136" class="market-axis-text">{{ insights.price_trend.y_mid_short }}</text>
                   <text x="12" y="246" class="market-axis-text">{{ insights.price_trend.y_min_short }}</text>
+                  <text x="18" y="146" class="market-axis-label market-axis-label-y" transform="rotate(-90 18 146)">Narx</text>
+                  <text x="405" y="276" class="market-axis-label">Sana</text>
                   <line x1="70" y1="24" x2="740" y2="24" class="market-grid-line"></line>
                   <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
                   <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
-                  <polygon points="70,242 {{ insights.price_trend.polyline }} 740,242" fill="url(#fallbackFill{{ loop.index }})"></polygon>
-                  <path d="{{ insights.price_trend.path }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></path>
+                  <line x1="70" y1="24" x2="70" y2="242" class="market-axis-line"></line>
+                  {% for point in insights.price_trend.points %}
+                    {% if point.show_label and point.y %}
+                      <line x1="{{ point.x }}" y1="242" x2="{{ point.x }}" y2="248" class="market-axis-tick"></line>
+                      <text x="{{ point.x }}" y="262" class="market-axis-date">{{ point.label }}</text>
+                    {% endif %}
+                  {% endfor %}
+                  {% for point in insights.price_trend.points %}
+                    {% if point.bar_y and insights.filters.chart_mode == "daily" %}
+                      <rect
+                        x="{{ point.bar_x }}"
+                        y="{{ point.bar_y }}"
+                        width="{{ point.bar_width }}"
+                        height="{{ point.bar_height }}"
+                        rx="3"
+                        class="market-daily-price-bar {% if trend.accent == 'blue' %}market-daily-price-bar-blue{% endif %}"
+                      >
+                        <title>{{ point.label }} | Kunlik narx: {{ point.display }} | {{ point.count }} ta e'lon</title>
+                      </rect>
+                    {% endif %}
+                  {% endfor %}
+                  {% if insights.filters.chart_mode == "daily" %}
+                    <polygon points="70,242 {{ insights.price_trend.polyline }} 740,242" fill="url(#fallbackFill{{ loop.index }})"></polygon>
+                    <path d="{{ insights.price_trend.path }}" class="market-main-line market-daily-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></path>
+                  {% endif %}
                   {% if insights.price_trend.moving_average_path %}
                     <path d="{{ insights.price_trend.moving_average_path }}" class="market-smooth-line"></path>
                   {% endif %}
                   {% for point in insights.price_trend.points %}
-                    {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
+                    {% if insights.filters.chart_mode == "daily" and point.y and (loop.index0 % 4 == 0 or loop.last) %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
                         <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | {{ point.count }} ta e'lon asosida</title>
                       </circle>
@@ -262,23 +379,24 @@
                   {% endfor %}
                   {% for point in insights.price_trend.points %}
                     {% if point.y %}
-                      {% set tooltip_x = -128 %}
+                      {% set tooltip_x = -146 %}
                       {% if point.x < 160 %}
                         {% set tooltip_x = 10 %}
                       {% elif point.x > 610 %}
-                        {% set tooltip_x = -266 %}
+                        {% set tooltip_x = -306 %}
                       {% endif %}
-                      {% set tooltip_y = -84 %}
-                      {% if point.y < 96 %}
+                      {% set tooltip_y = -102 %}
+                      {% if point.y < 116 %}
                         {% set tooltip_y = 16 %}
                       {% endif %}
                       <g class="market-tooltip-anchor" transform="translate({{ point.x }}, {{ point.y }})">
-                        <circle cx="0" cy="0" r="8" class="market-hover-point" aria-label="{{ point.label }} {{ point.display }} {{ point.count }} ta e'lon"></circle>
+                        <circle cx="0" cy="0" r="10" class="market-hover-point" aria-label="{{ point.label }} {{ point.display }} {{ point.count }} ta e'lon"></circle>
                         <g class="market-chart-tooltip" transform="translate({{ tooltip_x }}, {{ tooltip_y }})">
-                          <rect x="0" y="0" width="256" height="74" rx="10"></rect>
-                          <text x="12" y="23">{{ point.label }} | {{ point.display }}</text>
-                          <text x="12" y="46">Haftalik avg: {{ point.moving_display }}</text>
-                          <text x="12" y="65">{{ point.count }} ta e'lon asosida</text>
+                          <rect x="0" y="0" width="292" height="92" rx="10"></rect>
+                          <text x="12" y="23">{{ point.label }}</text>
+                          <text x="12" y="46">Kunlik: {{ point.display }}</text>
+                          <text x="12" y="65">Haftalik avg: {{ point.moving_display }}</text>
+                          <text x="12" y="84">{{ point.count }} ta e'lon asosida</text>
                         </g>
                       </g>
                     {% endif %}
@@ -293,24 +411,6 @@
       </section>
 
       <section class="market-grid-main">
-        <div class="market-card price-now">
-          <div class="market-section-heading">
-            <h2>O'rtacha narxlar (hozirgi davr)</h2>
-            <span>Median va P90 benchmark</span>
-          </div>
-          <div class="price-tiles">
-            {% for item in insights.price_summary %}
-              {% if loop.index <= 4 %}
-                <div class="price-tile">
-                  <small>{{ item.deal_label }} - {{ item.currency_code }}</small>
-                  <strong>{{ item.median_display }}</strong>
-                  <span>P90: {{ item.p90_display }}</span>
-                </div>
-              {% endif %}
-            {% endfor %}
-          </div>
-        </div>
-
         <div class="market-card district-table-card">
           <div class="market-section-heading">
             <h2>Tumanlar kesimida faollik</h2>
@@ -342,8 +442,8 @@
 
         <div class="market-card map-card">
           <div class="market-section-heading">
-            <h2>Haqiqiy xarita</h2>
-            <span>Koordinatali e'lonlar</span>
+            <h2>O'rtacha narx xaritasi</h2>
+            <span>{{ insights.map.metric_label }} · doirada e'lonlar soni</span>
           </div>
           <div
             id="marketMap"
@@ -351,53 +451,25 @@
             data-center-lat="{{ insights.map.center_lat }}"
             data-center-lon="{{ insights.map.center_lon }}"
             data-zoom="{{ insights.map.zoom }}"
+            data-geojson-url="{{ insights.map.geojson_url }}"
+            data-min-value="{{ insights.map.districts|map(attribute='metric_value')|min if insights.map.districts else 0 }}"
+            data-max-value="{{ insights.map.districts|map(attribute='metric_value')|max if insights.map.districts else 0 }}"
           >
           </div>
           <script type="application/json" id="marketMapPoints">{{ insights.map.points|tojson }}</script>
+          <script type="application/json" id="marketMapDistricts">{{ insights.map.districts|tojson }}</script>
           <div class="map-legend">
-            <span><i class="hot"></i>Ko'p e'lon</span>
-            <span><i class="mid"></i>O'rta</span>
-            <span><i class="low"></i>Kam</span>
-          </div>
-        </div>
-
-        <div class="market-card donut-card">
-          <div class="market-section-heading">
-            <h2>E'lonlar taqsimoti</h2>
-            <span>Obyekt turi</span>
-          </div>
-          <div class="donut-pair">
-            {% for item in insights.property_mix[:2] %}
-              <div class="market-donut" style="--pct: {{ item.total_pct }}%">
-                <div>
-                  <strong>{{ item.total }}</strong>
-                  <span>{{ item.label }}</span>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-
-        <div class="market-card area-card">
-          <div class="market-section-heading">
-            <h2>Maydon taqsimoti</h2>
-            <span>m2 segmentlari</span>
-          </div>
-          <div class="market-column-chart">
-            {% for item in insights.area_bands %}
-              <div>
-                <i style="height: {{ item.total_pct }}%"></i>
-                <strong>{{ item.total }}</strong>
-                <span>{{ item.label }}</span>
-              </div>
-            {% endfor %}
+            <span><i class="low"></i>Arzon {{ insights.map.min_display }}</span>
+            <span class="map-legend-ramp"></span>
+            <span><i class="hot"></i>Qimmat {{ insights.map.max_display }}</span>
+            <span><i class="count"></i>Doira: e'lonlar soni</span>
           </div>
         </div>
 
         <div class="market-card top-address-card">
           <div class="market-section-heading">
             <h2>Top shaharlar bo'yicha narx</h2>
-            <span>Median USD / UZS</span>
+            <span>Median UZS</span>
           </div>
           <div class="market-table-wrap">
             <table class="market-table">
@@ -406,7 +478,6 @@
                   <th>#</th>
                   <th>Shahar</th>
                   <th>Jami</th>
-                  <th>USD</th>
                   <th>UZS</th>
                 </tr>
               </thead>
@@ -416,7 +487,6 @@
                     <td>{{ loop.index }}</td>
                     <td>{{ city.city_name }}</td>
                     <td>{{ city.total }}</td>
-                    <td>{{ city.median_usd_display }}</td>
                     <td>{{ city.median_uzs_display }}</td>
                   </tr>
                 {% endfor %}
@@ -425,25 +495,202 @@
           </div>
         </div>
       </section>
-
-      <section class="insight-strip">
-        <div><b>Kvartira sotuv narxlari</b><span>{{ insights.sale_apartment_m2_trend.average_display }}</span></div>
-        <div><b>Oxirgi trend qiymati</b><span>{{ insights.price_trend.latest_display }}</span></div>
-        <div><b>Haftalik avg</b><span>{{ insights.price_trend.moving_average_latest_display }}</span></div>
-        <div><b>Anomaliya olib tashlandi</b><span>{{ insights.price_trend.anomaly_total }}</span></div>
-      </section>
     </section>
   </main>
+  <script>
+    (function () {
+      const periodSelect = document.getElementById("marketPeriodMode");
+      const periodPanels = Array.from(document.querySelectorAll("[data-period-panel]"));
+      if (!periodSelect || !periodPanels.length) {
+        return;
+      }
+      const syncPeriodPanels = () => {
+        periodPanels.forEach((panel) => {
+          panel.classList.toggle("is-hidden", panel.dataset.periodPanel !== periodSelect.value);
+        });
+      };
+      periodSelect.addEventListener("change", syncPeriodPanels);
+      syncPeriodPanels();
+    })();
+  </script>
+  <script>
+    (function () {
+      const root = document.getElementById("marketComparisonChart");
+      const dataEl = document.getElementById("marketComparisonData");
+      const listingPanel = document.getElementById("marketComparisonListings");
+      if (!root || !dataEl || !listingPanel) {
+        return;
+      }
+
+      const data = JSON.parse(dataEl.textContent || '{"segments":[]}');
+      const state = {};
+      let clickTimer = null;
+
+      const moneyShort = (value) => {
+        const number = Number(value || 0);
+        if (number >= 1000000000) return `${(number / 1000000000).toFixed(1)}B`;
+        if (number >= 1000000) return `${(number / 1000000).toFixed(1)}M`;
+        if (number >= 1000) return `${(number / 1000).toFixed(0)}k`;
+        return `${Math.round(number)}`;
+      };
+
+      const clearNode = (node) => {
+        while (node.firstChild) node.removeChild(node.firstChild);
+      };
+
+      const renderListings = (segment, item) => {
+        clearNode(listingPanel);
+        listingPanel.classList.remove("is-hidden");
+        const header = document.createElement("div");
+        header.className = "comparison-listing-head";
+        const title = document.createElement("strong");
+        title.textContent = `${segment.label} · ${item.name}`;
+        title.textContent = `${segment.label} - ${item.name}`;
+        const close = document.createElement("button");
+        close.type = "button";
+        close.textContent = "Yopish";
+        close.addEventListener("click", () => listingPanel.classList.add("is-hidden"));
+        header.append(title, close);
+        listingPanel.appendChild(header);
+
+        if (!item.listings || !item.listings.length) {
+          const empty = document.createElement("p");
+          empty.className = "comparison-empty";
+          empty.textContent = "Bu bar uchun linkli manba topilmadi.";
+          listingPanel.appendChild(empty);
+          return;
+        }
+
+        const list = document.createElement("div");
+        list.className = "comparison-listing-grid";
+        item.listings.forEach((listing) => {
+          const link = document.createElement("a");
+          link.href = listing.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+          const name = document.createElement("b");
+          name.textContent = listing.title;
+          const meta = document.createElement("span");
+          meta.textContent = `${listing.location || "Manzil yo'q"} · ${listing.price}`;
+          meta.textContent = `${listing.location || "Manzil yo'q"} - ${listing.price}`;
+          const metric = document.createElement("em");
+          metric.textContent = listing.metric;
+          link.append(name, meta, metric);
+          list.appendChild(link);
+        });
+        listingPanel.appendChild(list);
+      };
+
+      const render = () => {
+        clearNode(root);
+        if (!data.segments || !data.segments.length) {
+          const empty = document.createElement("p");
+          empty.className = "comparison-empty";
+          empty.textContent = "Bu filterlar bo'yicha bar chart uchun yetarli data yo'q.";
+          root.appendChild(empty);
+          return;
+        }
+
+        data.segments.forEach((segment) => {
+          const panel = document.createElement("article");
+          panel.className = "comparison-segment";
+          const activeParent = state[segment.key] || "";
+          const items = activeParent
+            ? segment.districts.filter((item) => item.parent === activeParent)
+            : segment.regions;
+          const maxValue = Math.max(...items.map((item) => Number(item.value || 0)), 1);
+
+          const head = document.createElement("div");
+          head.className = "comparison-segment-head";
+          const titleWrap = document.createElement("div");
+          const title = document.createElement("strong");
+          title.textContent = activeParent ? `${activeParent} tumanlari` : segment.label;
+          const metric = document.createElement("span");
+          metric.textContent = segment.metric_label;
+          titleWrap.append(title, metric);
+          head.appendChild(titleWrap);
+          if (activeParent) {
+            const back = document.createElement("button");
+            back.type = "button";
+            back.textContent = "Orqaga";
+            back.addEventListener("click", () => {
+              state[segment.key] = "";
+              render();
+            });
+            head.appendChild(back);
+          }
+          panel.appendChild(head);
+
+          if (!items.length) {
+            const empty = document.createElement("p");
+            empty.className = "comparison-empty";
+            empty.textContent = "Data yo'q.";
+            panel.appendChild(empty);
+            root.appendChild(panel);
+            return;
+          }
+
+          const rows = document.createElement("div");
+          rows.className = "comparison-bars";
+          items.forEach((item, index) => {
+            const row = document.createElement("button");
+            row.type = "button";
+            row.className = "comparison-bar-row";
+            row.title = "Bosing: tumanlar. 3 marta bosing: manbalar.";
+            const districtCount = segment.districts.filter((district) => district.parent === item.name).length;
+            const canDrill = item.level === "region" && districtCount > 0;
+
+            row.addEventListener("click", (event) => {
+              window.clearTimeout(clickTimer);
+              if (event.detail >= 3) {
+                renderListings(segment, item);
+                return;
+              }
+              clickTimer = window.setTimeout(() => {
+                if (event.detail === 1 && canDrill) {
+                  state[segment.key] = item.name;
+                  listingPanel.classList.add("is-hidden");
+                  render();
+                }
+              }, 260);
+            });
+
+            const name = document.createElement("span");
+            name.className = "comparison-name";
+            name.textContent = item.name;
+            const track = document.createElement("i");
+            const fill = document.createElement("b");
+            const width = Math.max(4, Math.round((Number(item.value || 0) / maxValue) * 100));
+            fill.style.width = `${width}%`;
+            fill.style.opacity = String(Math.max(0.35, 1 - index * 0.045));
+            track.appendChild(fill);
+            const value = document.createElement("span");
+            value.className = "comparison-value";
+            value.textContent = `${moneyShort(item.value)} · ${item.count} ta`;
+            row.append(name, track, value);
+            rows.appendChild(row);
+          });
+          panel.appendChild(rows);
+          root.appendChild(panel);
+        });
+      };
+
+      render();
+    })();
+  </script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     (function () {
       const mapEl = document.getElementById("marketMap");
       const dataEl = document.getElementById("marketMapPoints");
+      const districtDataEl = document.getElementById("marketMapDistricts");
       if (!mapEl || !dataEl || !window.L) {
         return;
       }
 
       const points = JSON.parse(dataEl.textContent || "[]");
+      const districts = JSON.parse(districtDataEl?.textContent || "[]");
+      const districtByKey = new Map(districts.map((district) => [district.key, district]));
       const center = [
         Number(mapEl.dataset.centerLat || 41.2995),
         Number(mapEl.dataset.centerLon || 69.2401),
@@ -454,24 +701,152 @@
         attribution: "&copy; OpenStreetMap",
       }).addTo(map);
 
-      const bounds = [];
-      points.forEach((point) => {
-        const radius = Math.max(7, Math.min(28, Math.sqrt(point.total) * 0.55));
-        const marker = L.circleMarker([point.lat, point.lon], {
-          radius,
-          color: "#ffffff",
-          weight: 2,
-          fillColor: point.total > 3000 ? "#ff6b4a" : point.total > 1200 ? "#f4c542" : "#50b96b",
-          fillOpacity: 0.82,
-        }).addTo(map);
-        marker.bindPopup(
-          `<strong>${point.label}</strong><br>Jami: ${point.total}<br>Sotuv: ${point.sale_total}<br>Ijara: ${point.rent_total}`
-        );
-        bounds.push([point.lat, point.lon]);
-      });
+      const normalizeDistrictKey = (value) => {
+        if (!value) return "";
+        const normalized = String(value)
+          .toLowerCase()
+          .replaceAll("ё", "е")
+          .replaceAll("'", "")
+          .replaceAll("`", "")
+          .replaceAll("ʻ", "")
+          .replaceAll("’", "")
+          .replaceAll("-", " ")
+          .replace(" district", "")
+          .replace(" tumani", "")
+          .replace("ский район", "")
+          .replace(" район", "")
+          .replace(/\s+/g, " ")
+          .trim();
+        const aliases = {
+          bektemir: "bektemir",
+          "бектемир": "bektemir",
+          chilonzor: "chilonzor",
+          "чиланзар": "chilonzor",
+          mirobod: "mirobod",
+          "мирабад": "mirobod",
+          "mirzo ulugbek": "mirzo_ulugbek",
+          "mirzo ulug bek": "mirzo_ulugbek",
+          "мирзо улугбек": "mirzo_ulugbek",
+          olmazor: "olmazor",
+          "алмазар": "olmazor",
+          sergeli: "sergeli",
+          "сергели": "sergeli",
+          "сергелий": "sergeli",
+          "сергилий": "sergeli",
+          shayxontohur: "shayxontohur",
+          "шайхантахур": "shayxontohur",
+          uchtepa: "uchtepa",
+          "учтепин": "uchtepa",
+          yakkasaroy: "yakkasaroy",
+          "яккасарай": "yakkasaroy",
+          yangihayot: "yangihayot",
+          "янгихаёт": "yangihayot",
+          "янгихаят": "yangihayot",
+          yashnobod: "yashnobod",
+          "яшнабад": "yashnobod",
+          yunusobod: "yunusobod",
+          "юнусабад": "yunusobod",
+        };
+        return aliases[normalized] || "";
+      };
 
-      if (bounds.length > 1) {
-        map.fitBounds(bounds, { padding: [18, 18] });
+      const minValue = Math.min(...districts.map((district) => Number(district.metric_value)).filter(Boolean));
+      const maxValue = Math.max(...districts.map((district) => Number(district.metric_value)).filter(Boolean));
+      const districtColor = (value) => {
+        if (!value || !Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue === maxValue) {
+          return "#d8e0ec";
+        }
+        const ratio = Math.max(0, Math.min(1, (Number(value) - minValue) / (maxValue - minValue)));
+        if (ratio >= 0.8) return "#d94f45";
+        if (ratio >= 0.6) return "#f08b3e";
+        if (ratio >= 0.4) return "#f2cf5b";
+        if (ratio >= 0.2) return "#99d17b";
+        return "#42ad6a";
+      };
+
+      const countColor = (total) => {
+        if (total > 3000) return "#d94f45";
+        if (total > 1200) return "#f08b3e";
+        return "#42ad6a";
+      };
+
+      const formatCount = (value) => {
+        const total = Number(value || 0);
+        if (total >= 1000) return `${(total / 1000).toFixed(total >= 10000 ? 0 : 1)}k`;
+        return String(total);
+      };
+
+      const addCountMarkers = (fitToPoints) => {
+        const bounds = [];
+        points.forEach((point) => {
+          const size = Math.max(34, Math.min(62, 26 + Math.sqrt(Number(point.total || 0)) * 0.28));
+          const marker = L.marker([point.lat, point.lon], {
+            icon: L.divIcon({
+              className: "market-count-marker",
+              html: `<span style="width:${size}px;height:${size}px;background:${countColor(point.total)}">${formatCount(point.total)}</span>`,
+              iconSize: [size, size],
+              iconAnchor: [size / 2, size / 2],
+            }),
+            zIndexOffset: 500,
+          }).addTo(map);
+          marker.bindPopup(
+            `<strong>${point.label}</strong><br>Narx: ${point.metric_display || "-"}<br>Jami: ${point.total}<br>Sotuv: ${point.sale_total}<br>Ijara: ${point.rent_total}`
+          );
+          bounds.push([point.lat, point.lon]);
+        });
+
+        if (fitToPoints && bounds.length > 1) {
+          map.fitBounds(bounds, { padding: [18, 18] });
+        }
+      };
+
+      const geojsonUrl = mapEl.dataset.geojsonUrl;
+      if (geojsonUrl && districts.length) {
+        fetch(geojsonUrl)
+          .then((response) => response.json())
+          .then((geojson) => {
+            const layer = L.geoJSON(geojson, {
+              style: (feature) => {
+                const props = feature.properties || {};
+                const key = normalizeDistrictKey(props.ADM2_EN) || normalizeDistrictKey(props.ADM2_RU) || normalizeDistrictKey(props.ADM2_UZ);
+                const district = districtByKey.get(key);
+                return {
+                  color: "#ffffff",
+                  weight: 1.3,
+                  opacity: 0.95,
+                  fillColor: districtColor(district?.metric_value),
+                  fillOpacity: district ? 0.72 : 0.24,
+                };
+              },
+              onEachFeature: (feature, layerItem) => {
+                const props = feature.properties || {};
+                const key = normalizeDistrictKey(props.ADM2_EN) || normalizeDistrictKey(props.ADM2_RU) || normalizeDistrictKey(props.ADM2_UZ);
+                const district = districtByKey.get(key);
+                const label = props.ADM2_UZ || props.ADM2_RU || props.ADM2_EN || "Tuman";
+                layerItem.bindPopup(
+                  `<strong>${label}</strong><br>` +
+                    `Narx: ${district?.metric_display || "-"}<br>` +
+                    `Jami: ${district?.total || 0}<br>` +
+                    `Sotuv: ${district?.sale_total || 0}<br>` +
+                    `Ijara: ${district?.rent_total || 0}`
+                );
+                layerItem.on({
+                  mouseover: (event) => {
+                    event.target.setStyle({ weight: 2.4, fillOpacity: 0.9 });
+                    event.target.bringToFront();
+                  },
+                  mouseout: (event) => {
+                    event.target.setStyle({ weight: 1.3, fillOpacity: district ? 0.72 : 0.24 });
+                  },
+                });
+              },
+            }).addTo(map);
+            map.fitBounds(layer.getBounds(), { padding: [12, 12] });
+            addCountMarkers(false);
+          })
+          .catch(() => addCountMarkers(true));
+      } else {
+        addCountMarkers(true);
       }
       window.setTimeout(() => map.invalidateSize(), 150);
     })();

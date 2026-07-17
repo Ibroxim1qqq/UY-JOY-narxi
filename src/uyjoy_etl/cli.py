@@ -7,7 +7,7 @@ from pathlib import Path
 
 from uyjoy_etl.category_catalog import category_by_path
 from uyjoy_etl.cloud_export import export_cloud_csv, import_cloud_csv
-from uyjoy_etl.cloud_sync import sync_cloud_database
+from uyjoy_etl.cloud_sync import sync_cloud_database, sync_dashboard_database
 from uyjoy_etl.config import load_config
 from uyjoy_etl.contact_import import import_contacts_csv
 from uyjoy_etl.data_quality import SUSPICIOUS_CASES, mark_suspicious_records
@@ -96,6 +96,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=3,
         help="Full bo'lmasa, oxirgi nechta kundagi OLX qatorlari sync qilinadi",
     )
+
+    sync_dashboard_parser = subparsers.add_parser(
+        "sync-dashboard-cloud",
+        help="Render/Power BI uchun faqat real_estate_listings jadvalini cloud Postgresga yuboradi",
+    )
+    sync_dashboard_parser.add_argument("database_url", help="Cloud Postgres DATABASE_URL")
 
     inspect_parser = subparsers.add_parser(
         "inspect-source",
@@ -195,6 +201,16 @@ def main(argv: list[str] | None = None) -> int:
             csv_path=csv_path,
             full_sync=args.full,
             olx_updated_since_days=args.olx_updated_since_days,
+        )
+        for key, value in summary.items():
+            print(f"{key}={value}")
+        return 0
+
+    if args.command == "sync-dashboard-cloud":
+        summary = sync_dashboard_database(
+            local_database=database,
+            cloud_database_url=args.database_url,
+            schema_path=config.root_dir / "sql" / "schema_cloud.sql",
         )
         for key, value in summary.items():
             print(f"{key}={value}")

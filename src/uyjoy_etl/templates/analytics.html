@@ -111,11 +111,7 @@
         <label>
           <span>Valyuta</span>
           <select name="currency_code">
-            {% for item in insights.facets.currencies %}
-              <option value="{{ item.value }}" {% if insights.filters.currency_code == item.value %}selected{% endif %}>
-                {{ item.value }} ({{ item.count }})
-              </option>
-            {% endfor %}
+            <option value="UZS" selected>UZS so'm</option>
           </select>
         </label>
         <label>
@@ -326,7 +322,6 @@
                 <th>Jami</th>
                 <th>Sotuv</th>
                 <th>Ijara</th>
-                <th>Median USD</th>
                 <th>Median UZS</th>
               </tr>
             </thead>
@@ -337,7 +332,6 @@
                   <td>{{ city.total }}</td>
                   <td>{{ city.sale_total }}</td>
                   <td>{{ city.rent_total }}</td>
-                  <td>{{ city.median_usd_display }}</td>
                   <td>{{ city.median_uzs_display }}</td>
                 </tr>
               {% endfor %}
@@ -424,8 +418,8 @@
       <div class="admin-card">
         <div class="panel-heading">
           <div>
-            <h2>USD narx segmentlari</h2>
-            <span>Valyutasi USD bo'lgan e'lonlar</span>
+            <h2>UZS narx segmentlari</h2>
+            <span>Valyutasi UZS bo'lgan e'lonlar</span>
           </div>
         </div>
         <div class="mini-bars">
@@ -443,7 +437,7 @@
         <div class="panel-heading">
           <div>
             <h2>Narx benchmarklari</h2>
-            <span>Deal type va valyuta bo'yicha median / P90</span>
+            <span>Deal type bo'yicha UZS median / P90</span>
           </div>
         </div>
         <div class="compact-table">
