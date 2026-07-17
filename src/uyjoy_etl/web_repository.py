@@ -431,8 +431,9 @@ class ListingRepository:
         filters = filters or MarketInsightFilters()
         filters = self._normalize_market_filters(filters)
         where_sql, params = self._build_market_where_clause(filters)
+        trend = self._market_trend_sql(filters)
         with self._database.connect() as conn:
-            currency_facets = self._get_market_currency_facets(conn, where_sql, params)
+            currency_facets = self._get_market_currency_facets(conn, where_sql, params, trend["extra_predicate"])
             filters = self._with_available_currency(filters, currency_facets)
             trend = self._market_trend_sql(filters)
             facets = self._get_market_facets(conn, currency_facets)
@@ -638,38 +639,33 @@ class ListingRepository:
                 order by days.day
                 """
             ).fetchall()]
-            trend_rows = [dict(row) for row in conn.execute(
-                f"""
-                with days as (
-                    select generate_series(
-                        current_date - (%(days)s::int - 1) * interval '1 day',
-                        current_date,
-                        interval '1 day'
-                    )::date as day
-                ),
-                filtered as (
-                    select
-                        coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as day,
-                        {trend["value_expression"]} as metric_value
-                    from real_estate_listings
-                    {where_sql}
-                      and currency_code = %(currency_code)s
-                      and price_value is not null
-                      and price_value > 0
-                      {trend["extra_predicate"]}
-                )
-                select
-                    days.day,
-                    to_char(days.day, 'DD.MM') as label,
-                    avg(filtered.metric_value) as avg_value,
-                    count(filtered.metric_value) as listing_count
-                from days
-                left join filtered on filtered.day = days.day
-                group by days.day
-                order by days.day
-                """,
-                {**params, "currency_code": filters.currency_code, "days": filters.days},
-            ).fetchall()]
+            trend_rows = self._query_market_trend_rows(conn, where_sql, params, filters, trend)
+            sale_apartment_filters = MarketInsightFilters(
+                deal_type="sale",
+                property_type="apartment",
+                city="",
+                district="",
+                currency_code=filters.currency_code,
+                metric="avg_price_m2",
+                days=filters.days,
+            )
+            sale_where_sql, sale_params = self._build_market_where_clause(sale_apartment_filters)
+            sale_trend = self._market_trend_sql(sale_apartment_filters)
+            sale_currency_facets = self._get_market_currency_facets(
+                conn,
+                sale_where_sql,
+                sale_params,
+                sale_trend["extra_predicate"],
+            )
+            sale_apartment_filters = self._with_available_currency(sale_apartment_filters, sale_currency_facets)
+            sale_trend = self._market_trend_sql(sale_apartment_filters)
+            sale_trend_rows = self._query_market_trend_rows(
+                conn,
+                sale_where_sql,
+                sale_params,
+                sale_apartment_filters,
+                sale_trend,
+            )
 
         for row in source_mix:
             row["label"] = self._source_label(row.get("source"), None)
@@ -700,6 +696,11 @@ class ListingRepository:
             "price_summary": price_summary,
             "daily_supply": _with_percent(daily_supply, ("olx_total", "telegram_total")),
             "price_trend": self._prepare_line_chart(trend_rows, filters, trend["label"]),
+            "sale_apartment_m2_trend": self._prepare_line_chart(
+                sale_trend_rows,
+                sale_apartment_filters,
+                "Sotuvdagi kvartira m2 avg",
+            ),
         }
 
     def iter_powerbi_rows(self) -> list[dict[str, Any]]:
@@ -867,6 +868,7 @@ class ListingRepository:
         conn: Any,
         where_sql: str,
         params: dict[str, Any],
+        extra_predicate: str = "",
     ) -> list[dict[str, Any]]:
         rows = conn.execute(
             f"""
@@ -876,6 +878,7 @@ class ListingRepository:
               and currency_code in ('USD', 'UZS')
               and price_value is not null
               and price_value > 0
+              {extra_predicate}
             group by currency_code
             order by count(*) desc, currency_code
             """,
@@ -926,6 +929,48 @@ class ListingRepository:
             "value_expression": "price_value",
             "extra_predicate": "",
         }
+
+    def _query_market_trend_rows(
+        self,
+        conn: Any,
+        where_sql: str,
+        params: dict[str, Any],
+        filters: MarketInsightFilters,
+        trend: dict[str, str],
+    ) -> list[dict[str, Any]]:
+        rows = conn.execute(
+            f"""
+            with days as (
+                select generate_series(
+                    current_date - (%(days)s::int - 1) * interval '1 day',
+                    current_date,
+                    interval '1 day'
+                )::date as day
+            ),
+            filtered as (
+                select
+                    coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as day,
+                    {trend["value_expression"]} as metric_value
+                from real_estate_listings
+                {where_sql}
+                  and currency_code = %(currency_code)s
+                  and price_value is not null
+                  and price_value > 0
+                  {trend["extra_predicate"]}
+            )
+            select
+                days.day,
+                to_char(days.day, 'DD.MM') as label,
+                avg(filtered.metric_value) as avg_value,
+                count(filtered.metric_value) as listing_count
+            from days
+            left join filtered on filtered.day = days.day
+            group by days.day
+            order by days.day
+            """,
+            {**params, "currency_code": filters.currency_code, "days": filters.days},
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def _prepare_line_chart(
         self,

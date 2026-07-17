@@ -180,6 +180,58 @@
         {% endif %}
       </div>
 
+      <div class="admin-card span-4">
+        <div class="panel-heading">
+          <div>
+            <h2>Sotuvdagi kvartira m2 narxi</h2>
+            <span>Umumiy sotuv bozori: {{ insights.sale_apartment_m2_trend.currency_code }}, {{ insights.filters.days }} kun</span>
+          </div>
+          <div class="line-kpis">
+            <span>Oxirgi: <strong>{{ insights.sale_apartment_m2_trend.latest_display }}</strong></span>
+            <span>5 kunlik avg: <strong>{{ insights.sale_apartment_m2_trend.moving_average_latest_display }}</strong></span>
+            <span>O'rtacha: <strong>{{ insights.sale_apartment_m2_trend.average_display }}</strong></span>
+          </div>
+        </div>
+        {% if insights.sale_apartment_m2_trend.points %}
+          <div class="line-chart-wrap">
+            <svg class="line-chart" viewBox="0 0 {{ insights.sale_apartment_m2_trend.width }} {{ insights.sale_apartment_m2_trend.height }}" role="img" aria-label="Sotuvdagi kvartira m2 narxi line graph">
+              <g class="line-chart-legend">
+                <line x1="592" y1="17" x2="626" y2="17" class="price-line legend-line"></line>
+                <text x="632" y="21">Kunlik avg</text>
+                <line x1="592" y1="37" x2="626" y2="37" class="moving-average-line legend-line"></line>
+                <text x="632" y="41">5 kunlik avg</text>
+              </g>
+              <line x1="58" y1="22" x2="58" y2="242" class="axis-line"></line>
+              <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+              <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
+              <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+              {% if insights.sale_apartment_m2_trend.average_y %}
+                <line x1="58" y1="{{ insights.sale_apartment_m2_trend.average_y }}" x2="740" y2="{{ insights.sale_apartment_m2_trend.average_y }}" class="avg-line"></line>
+                <text x="646" y="{{ insights.sale_apartment_m2_trend.average_y - 8 }}" class="avg-label">Avg {{ insights.sale_apartment_m2_trend.average_display }}</text>
+              {% endif %}
+              <text x="8" y="27" class="axis-text">{{ insights.sale_apartment_m2_trend.y_max_display }}</text>
+              <text x="8" y="246" class="axis-text">{{ insights.sale_apartment_m2_trend.y_min_display }}</text>
+              {% if insights.sale_apartment_m2_trend.moving_average_polyline %}
+                <polyline points="{{ insights.sale_apartment_m2_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
+              {% endif %}
+              <polyline points="{{ insights.sale_apartment_m2_trend.polyline }}" class="price-line"></polyline>
+              {% for point in insights.sale_apartment_m2_trend.points %}
+                {% if point.y %}
+                  <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" class="price-point">
+                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon</title>
+                  </circle>
+                {% endif %}
+                {% if point.show_label %}
+                  <text x="{{ point.x }}" y="266" class="x-label">{{ point.label }}</text>
+                {% endif %}
+              {% endfor %}
+            </svg>
+          </div>
+        {% else %}
+          <p class="empty-mini">Bu shahar/tuman uchun sotuvdagi kvartira m2 narxi trendiga yetarli data topilmadi.</p>
+        {% endif %}
+      </div>
+
       <div class="admin-card span-2">
         <div class="panel-heading">
           <div>
