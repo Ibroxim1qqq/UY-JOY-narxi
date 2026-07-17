@@ -950,21 +950,88 @@ class ListingRepository:
             filtered as (
                 select
                     coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as day,
-                    {trend["value_expression"]} as metric_value
+                    {trend["value_expression"]} as metric_value,
+                    coalesce(city_name, '') as city_key,
+                    coalesce(district_name, '') as district_key,
+                    coalesce(property_type, '') as property_key,
+                    coalesce(deal_type, '') as deal_key,
+                    coalesce(currency_code, '') as currency_key
                 from real_estate_listings
                 {where_sql}
                   and currency_code = %(currency_code)s
                   and price_value is not null
                   and price_value > 0
                   {trend["extra_predicate"]}
+            ),
+            daily_segments as (
+                select
+                    day,
+                    city_key,
+                    district_key,
+                    property_key,
+                    deal_key,
+                    currency_key,
+                    avg(metric_value) as segment_avg,
+                    count(*) as segment_count
+                from filtered
+                group by day, city_key, district_key, property_key, deal_key, currency_key
+            ),
+            with_neighbors as (
+                select
+                    current.*,
+                    (
+                        select sum(peer.segment_avg * peer.segment_count) / nullif(sum(peer.segment_count), 0)
+                        from daily_segments peer
+                        where peer.city_key = current.city_key
+                          and peer.district_key = current.district_key
+                          and peer.property_key = current.property_key
+                          and peer.deal_key = current.deal_key
+                          and peer.currency_key = current.currency_key
+                          and peer.day between current.day - interval '2 days' and current.day + interval '2 days'
+                          and peer.day <> current.day
+                    ) as neighbor_avg,
+                    (
+                        select coalesce(sum(peer.segment_count), 0)
+                        from daily_segments peer
+                        where peer.city_key = current.city_key
+                          and peer.district_key = current.district_key
+                          and peer.property_key = current.property_key
+                          and peer.deal_key = current.deal_key
+                          and peer.currency_key = current.currency_key
+                          and peer.day between current.day - interval '2 days' and current.day + interval '2 days'
+                          and peer.day <> current.day
+                    ) as neighbor_count
+                from daily_segments current
+            ),
+            clean_segments as (
+                select
+                    *,
+                    case
+                        when segment_count >= 3
+                         and neighbor_count >= 3
+                         and neighbor_avg > 0
+                         and (
+                            segment_avg > neighbor_avg * 2.2
+                            or segment_avg < neighbor_avg / 2.2
+                         )
+                        then true
+                        else false
+                    end as is_anomaly
+                from with_neighbors
             )
             select
                 days.day,
                 to_char(days.day, 'DD.MM') as label,
-                avg(filtered.metric_value) as avg_value,
-                count(filtered.metric_value) as listing_count
+                sum(clean_segments.segment_avg * clean_segments.segment_count)
+                    filter (where clean_segments.is_anomaly is false)
+                    / nullif(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly is false), 0)
+                    as avg_value,
+                coalesce(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly is false), 0)
+                    as listing_count,
+                coalesce(sum(clean_segments.segment_count) filter (where clean_segments.is_anomaly), 0)
+                    as anomaly_count
             from days
-            left join filtered on filtered.day = days.day
+            left join clean_segments on clean_segments.day = days.day
             group by days.day
             order by days.day
             """,
@@ -985,6 +1052,7 @@ class ListingRepository:
         pad_top = 22
         pad_bottom = 38
         values = [float(row["avg_value"]) for row in rows if row.get("avg_value") is not None]
+        anomaly_total = sum(int(row.get("anomaly_count") or 0) for row in rows)
         if not values:
             return {
                 "metric_label": metric_label,
@@ -998,6 +1066,7 @@ class ListingRepository:
                 "average_y": None,
                 "y_min_display": "-",
                 "y_max_display": "-",
+                "anomaly_total": anomaly_total,
                 "width": width,
                 "height": height,
             }
@@ -1036,6 +1105,7 @@ class ListingRepository:
                         "display": "-",
                         "moving_display": moving_display,
                         "count": int(row.get("listing_count") or 0),
+                        "anomaly_count": int(row.get("anomaly_count") or 0),
                         "show_label": index == 0 or index == len(rows) - 1 or index % 7 == 0,
                     }
                 )
@@ -1051,6 +1121,7 @@ class ListingRepository:
                 "display": self._format_trend_money(value, filters.currency_code, metric_label),
                 "moving_display": moving_display,
                 "count": int(row.get("listing_count") or 0),
+                "anomaly_count": int(row.get("anomaly_count") or 0),
                 "show_label": index == 0 or index == len(rows) - 1 or index % 7 == 0,
             }
             points.append(point)
@@ -1078,6 +1149,7 @@ class ListingRepository:
             "average_y": round(average_y, 2),
             "y_min_display": self._format_trend_money(y_min, filters.currency_code, metric_label),
             "y_max_display": self._format_trend_money(y_max, filters.currency_code, metric_label),
+            "anomaly_total": anomaly_total,
             "width": width,
             "height": height,
         }

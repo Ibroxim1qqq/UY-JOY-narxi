@@ -138,6 +138,7 @@
             <span>Oxirgi: <strong>{{ insights.price_trend.latest_display }}</strong></span>
             <span>5 kunlik avg: <strong>{{ insights.price_trend.moving_average_latest_display }}</strong></span>
             <span>O'rtacha: <strong>{{ insights.price_trend.average_display }}</strong></span>
+            <span>Anomaliya: <strong>{{ insights.price_trend.anomaly_total }}</strong></span>
           </div>
         </div>
         {% if insights.price_trend.points %}
@@ -166,7 +167,7 @@
               {% for point in insights.price_trend.points %}
                 {% if point.y %}
                   <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" class="price-point">
-                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon</title>
+                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon | anomaly {{ point.anomaly_count }}</title>
                   </circle>
                 {% endif %}
                 {% if point.show_label %}
@@ -190,6 +191,7 @@
             <span>Oxirgi: <strong>{{ insights.sale_apartment_m2_trend.latest_display }}</strong></span>
             <span>5 kunlik avg: <strong>{{ insights.sale_apartment_m2_trend.moving_average_latest_display }}</strong></span>
             <span>O'rtacha: <strong>{{ insights.sale_apartment_m2_trend.average_display }}</strong></span>
+            <span>Anomaliya: <strong>{{ insights.sale_apartment_m2_trend.anomaly_total }}</strong></span>
           </div>
         </div>
         {% if insights.sale_apartment_m2_trend.points %}
@@ -218,7 +220,7 @@
               {% for point in insights.sale_apartment_m2_trend.points %}
                 {% if point.y %}
                   <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" class="price-point">
-                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon</title>
+                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon | anomaly {{ point.anomaly_count }}</title>
                   </circle>
                 {% endif %}
                 {% if point.show_label %}
