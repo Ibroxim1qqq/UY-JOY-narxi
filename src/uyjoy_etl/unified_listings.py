@@ -101,7 +101,13 @@ select
     first_seen_at,
     last_seen_at,
     updated_at
-from olx_listing_raw;
+from olx_listing_raw
+where price_value is not null
+  and (
+      nullif(city_name, '') is not null
+      or nullif(district_name, '') is not null
+      or nullif(location_path, '') is not null
+  );
 """
 
 
@@ -156,5 +162,12 @@ select
     posted_at as first_seen_at,
     updated_at as last_seen_at,
     updated_at
-from telegram_real_estate_posts;
+from telegram_real_estate_posts
+where price_value is not null
+  and (
+      nullif(city_name, '') is not null
+      or nullif(district_name, '') is not null
+      or nullif(address, '') is not null
+      or nullif(neighborhood, '') is not null
+  );
 """
