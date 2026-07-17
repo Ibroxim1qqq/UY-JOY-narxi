@@ -642,32 +642,48 @@ class ListingRepository:
                 """
             ).fetchall()]
             trend_rows = self._query_market_trend_rows(conn, where_sql, params, filters, trend)
-            sale_apartment_filters = MarketInsightFilters(
-                deal_type="sale",
-                property_type="apartment",
-                city="",
-                district="",
-                currency_code=filters.currency_code,
-                metric="avg_price_m2",
-                days=filters.days,
-            )
-            sale_where_sql, sale_params = self._build_market_where_clause(sale_apartment_filters)
-            sale_trend = self._market_trend_sql(sale_apartment_filters)
-            sale_currency_facets = self._get_market_currency_facets(
-                conn,
-                sale_where_sql,
-                sale_params,
-                sale_trend["extra_predicate"],
-            )
-            sale_apartment_filters = self._with_available_currency(sale_apartment_filters, sale_currency_facets)
-            sale_trend = self._market_trend_sql(sale_apartment_filters)
-            sale_trend_rows = self._query_market_trend_rows(
-                conn,
-                sale_where_sql,
-                sale_params,
-                sale_apartment_filters,
-                sale_trend,
-            )
+            segment_trends = [
+                self._market_segment_trend(
+                    conn,
+                    filters,
+                    deal_type="sale",
+                    property_type="apartment",
+                    metric="avg_price_m2",
+                    title="Kvartira (sotuv)",
+                    badge="SOTUV",
+                    accent="green",
+                ),
+                self._market_segment_trend(
+                    conn,
+                    filters,
+                    deal_type="sale",
+                    property_type="house",
+                    metric="avg_price_m2",
+                    title="Hovli (sotuv)",
+                    badge="SOTUV",
+                    accent="green",
+                ),
+                self._market_segment_trend(
+                    conn,
+                    filters,
+                    deal_type="rent",
+                    property_type="apartment",
+                    metric="avg_price",
+                    title="Kvartira (ijara)",
+                    badge="IJARA",
+                    accent="blue",
+                ),
+                self._market_segment_trend(
+                    conn,
+                    filters,
+                    deal_type="rent",
+                    property_type="house",
+                    metric="avg_price",
+                    title="Hovli (ijara)",
+                    badge="IJARA",
+                    accent="blue",
+                ),
+            ]
 
         for row in source_mix:
             row["label"] = self._source_label(row.get("source"), None)
@@ -698,10 +714,11 @@ class ListingRepository:
             "price_summary": price_summary,
             "daily_supply": _with_percent(daily_supply, ("olx_total", "telegram_total")),
             "price_trend": self._prepare_line_chart(trend_rows, filters, trend["label"]),
+            "segment_trends": segment_trends,
             "sale_apartment_m2_trend": self._prepare_line_chart(
-                sale_trend_rows,
-                sale_apartment_filters,
-                "Sotuvdagi kvartira m2 avg",
+                segment_trends[0]["chart"]["raw_rows"],
+                segment_trends[0]["filters"],
+                segment_trends[0]["chart"]["metric_label"],
             ),
         }
 
@@ -930,6 +947,48 @@ class ListingRepository:
             "label": "O'rtacha narx",
             "value_expression": "price_value",
             "extra_predicate": "",
+        }
+
+    def _market_segment_trend(
+        self,
+        conn: Any,
+        base_filters: MarketInsightFilters,
+        *,
+        deal_type: str,
+        property_type: str,
+        metric: str,
+        title: str,
+        badge: str,
+        accent: str,
+    ) -> dict[str, Any]:
+        segment_filters = MarketInsightFilters(
+            deal_type=deal_type,
+            property_type=property_type,
+            city=base_filters.city,
+            district=base_filters.district,
+            currency_code=base_filters.currency_code,
+            metric=metric,
+            days=base_filters.days,
+        )
+        where_sql, params = self._build_market_where_clause(segment_filters)
+        trend = self._market_trend_sql(segment_filters)
+        currency_facets = self._get_market_currency_facets(
+            conn,
+            where_sql,
+            params,
+            trend["extra_predicate"],
+        )
+        segment_filters = self._with_available_currency(segment_filters, currency_facets)
+        trend = self._market_trend_sql(segment_filters)
+        rows = self._query_market_trend_rows(conn, where_sql, params, segment_filters, trend)
+        chart = self._prepare_line_chart(rows, segment_filters, trend["label"])
+        chart["raw_rows"] = rows
+        return {
+            "title": title,
+            "badge": badge,
+            "accent": accent,
+            "filters": segment_filters,
+            "chart": chart,
         }
 
     def _query_market_trend_rows(

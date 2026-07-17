@@ -90,6 +90,24 @@
           </select>
         </label>
 
+        <div class="market-range-control">
+          <span>Narx oralig'i</span>
+          <div>
+            <input type="number" name="price_min" placeholder="0">
+            <input type="number" name="price_max" placeholder="50 M+">
+          </div>
+          <b></b>
+        </div>
+
+        <div class="market-range-control">
+          <span>Maydon (m2)</span>
+          <div>
+            <input type="number" name="area_min" placeholder="0">
+            <input type="number" name="area_max" placeholder="500+">
+          </div>
+          <b></b>
+        </div>
+
         <input type="hidden" name="metric" value="{{ insights.filters.metric }}">
         <button type="submit" class="market-apply">Qo'llash</button>
       </form>
@@ -145,79 +163,55 @@
           <span>{{ insights.filters.days }} kun, {{ insights.price_trend.currency_code }}</span>
         </div>
         <div class="market-mini-charts">
-          <div class="market-mini-chart">
-            <div class="mini-chart-title">
-              <b>Kvartira (sotuv)</b>
-              <span>{{ insights.sale_apartment_m2_trend.metric_label }}</span>
+          {% for trend in insights.segment_trends %}
+            <div class="market-mini-chart">
+              <div class="mini-chart-title">
+                <div>
+                  <em class="trend-badge trend-badge-{{ trend.accent }}">{{ trend.badge }}</em>
+                  <b>{{ trend.title }}</b>
+                  <span>{{ trend.chart.metric_label }}</span>
+                </div>
+                <small>O'rtacha narx</small>
+              </div>
+              {% if trend.chart.points|selectattr("y")|list|length >= 5 %}
+                <svg viewBox="0 0 {{ trend.chart.width }} {{ trend.chart.height }}" aria-label="{{ trend.title }} trendi">
+                  <text x="8" y="27" class="axis-text">{{ trend.chart.y_max_display }}</text>
+                  <text x="8" y="246" class="axis-text">{{ trend.chart.y_min_display }}</text>
+                  <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
+                  <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+                  <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+                  {% if trend.chart.moving_average_polyline %}
+                    <polyline points="{{ trend.chart.moving_average_polyline }}" class="moving-average-line"></polyline>
+                  {% endif %}
+                  <polyline points="{{ trend.chart.polyline }}" class="{% if trend.accent == 'blue' %}moving-average-line{% else %}price-line{% endif %}"></polyline>
+                  {% for point in trend.chart.points %}
+                    {% if point.y %}
+                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3" class="price-point"></circle>
+                    {% endif %}
+                  {% endfor %}
+                </svg>
+              {% elif insights.price_trend.points %}
+                <svg viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" aria-label="{{ trend.title }} umumiy trendi">
+                  <text x="8" y="27" class="axis-text">{{ insights.price_trend.y_max_display }}</text>
+                  <text x="8" y="246" class="axis-text">{{ insights.price_trend.y_min_display }}</text>
+                  <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
+                  <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
+                  <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
+                  {% if insights.price_trend.moving_average_polyline %}
+                    <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
+                  {% endif %}
+                  <polyline points="{{ insights.price_trend.polyline }}" class="{% if trend.accent == 'blue' %}moving-average-line{% else %}price-line{% endif %}"></polyline>
+                  {% for point in insights.price_trend.points %}
+                    {% if point.y %}
+                      <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3" class="price-point"></circle>
+                    {% endif %}
+                  {% endfor %}
+                </svg>
+              {% else %}
+                <p class="empty-mini">Data yetarli emas.</p>
+              {% endif %}
             </div>
-            {% if insights.sale_apartment_m2_trend.points|length > 1 %}
-              <svg viewBox="0 0 {{ insights.sale_apartment_m2_trend.width }} {{ insights.sale_apartment_m2_trend.height }}" aria-label="Kvartira sotuv trendi">
-                <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
-                <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
-                <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
-                {% if insights.sale_apartment_m2_trend.moving_average_polyline %}
-                  <polyline points="{{ insights.sale_apartment_m2_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
-                {% endif %}
-                <polyline points="{{ insights.sale_apartment_m2_trend.polyline }}" class="price-line"></polyline>
-              </svg>
-            {% elif insights.price_trend.points %}
-              <svg viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" aria-label="Umumiy bozor trendi">
-                <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
-                <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
-                <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
-                {% if insights.price_trend.moving_average_polyline %}
-                  <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
-                {% endif %}
-                <polyline points="{{ insights.price_trend.polyline }}" class="price-line"></polyline>
-              </svg>
-            {% else %}
-              <p class="empty-mini">Data yetarli emas.</p>
-            {% endif %}
-          </div>
-
-          <div class="market-mini-chart">
-            <div class="mini-chart-title">
-              <b>Bozor narxi</b>
-              <span>{{ insights.price_trend.metric_label }}</span>
-            </div>
-            {% if insights.price_trend.points %}
-              <svg viewBox="0 0 {{ insights.price_trend.width }} {{ insights.price_trend.height }}" aria-label="Bozor narxi trendi">
-                <line x1="58" y1="22" x2="740" y2="22" class="grid-line"></line>
-                <line x1="58" y1="132" x2="740" y2="132" class="grid-line"></line>
-                <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
-                {% if insights.price_trend.moving_average_polyline %}
-                  <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="moving-average-line"></polyline>
-                {% endif %}
-                <polyline points="{{ insights.price_trend.polyline }}" class="price-line"></polyline>
-              </svg>
-            {% else %}
-              <p class="empty-mini">Data yetarli emas.</p>
-            {% endif %}
-          </div>
-
-          <div class="market-mini-chart">
-            <div class="mini-chart-title">
-              <b>OLX oqimi</b>
-              <span>14 kunlik yangi taklif</span>
-            </div>
-            <div class="micro-bars">
-              {% for day in insights.daily_supply %}
-                <i style="height: {{ day.olx_total_pct }}%" title="{{ day.label }} OLX: {{ day.olx_total }}"></i>
-              {% endfor %}
-            </div>
-          </div>
-
-          <div class="market-mini-chart">
-            <div class="mini-chart-title">
-              <b>Telegram oqimi</b>
-              <span>14 kunlik yangi taklif</span>
-            </div>
-            <div class="micro-bars micro-bars-blue">
-              {% for day in insights.daily_supply %}
-                <i style="height: {{ day.telegram_total_pct }}%" title="{{ day.label }} Telegram: {{ day.telegram_total }}"></i>
-              {% endfor %}
-            </div>
-          </div>
+          {% endfor %}
         </div>
       </section>
 

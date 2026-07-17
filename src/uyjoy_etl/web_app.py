@@ -359,6 +359,7 @@ def _empty_market_insights() -> dict[str, object]:
             "width": 760,
             "height": 280,
         },
+        "segment_trends": [],
         "sale_apartment_m2_trend": {
             "metric_label": "",
             "currency_code": "",
