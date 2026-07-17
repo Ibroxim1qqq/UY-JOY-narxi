@@ -184,7 +184,7 @@
                   <b>{{ trend.title }}</b>
                   <span>{{ trend.chart.metric_label }}</span>
                 </div>
-                <small>O'rtacha narx</small>
+                <small>Haftalik avg</small>
               </div>
               {% if trend.chart.points|selectattr("y")|list|length >= 5 %}
                 <svg class="market-line-svg" viewBox="0 0 {{ trend.chart.width }} {{ trend.chart.height }}" aria-label="{{ trend.title }} trendi">
@@ -200,21 +200,21 @@
                   <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
                   <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
                   <polygon points="70,242 {{ trend.chart.polyline }} 740,242" fill="url(#trendFill{{ loop.index }})"></polygon>
+                  <polyline points="{{ trend.chart.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
                   {% if trend.chart.moving_average_polyline %}
                     <polyline points="{{ trend.chart.moving_average_polyline }}" class="market-smooth-line"></polyline>
                   {% endif %}
-                  <polyline points="{{ trend.chart.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
                   {% for point in trend.chart.points %}
                     {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
-                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon asosida</title>
+                        <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | {{ point.count }} ta e'lon asosida</title>
                       </circle>
                     {% endif %}
                   {% endfor %}
                   {% for point in trend.chart.points %}
                     {% if point.y %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="10" class="market-hover-point">
-                        <title>{{ point.label }} | {{ point.display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
+                        <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
                       </circle>
                     {% endif %}
                   {% endfor %}
@@ -233,21 +233,21 @@
                   <line x1="70" y1="132" x2="740" y2="132" class="market-grid-line"></line>
                   <line x1="70" y1="242" x2="740" y2="242" class="market-axis-line"></line>
                   <polygon points="70,242 {{ insights.price_trend.polyline }} 740,242" fill="url(#fallbackFill{{ loop.index }})"></polygon>
+                  <polyline points="{{ insights.price_trend.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
                   {% if insights.price_trend.moving_average_polyline %}
                     <polyline points="{{ insights.price_trend.moving_average_polyline }}" class="market-smooth-line"></polyline>
                   {% endif %}
-                  <polyline points="{{ insights.price_trend.polyline }}" class="market-main-line {% if trend.accent == 'blue' %}market-main-line-blue{% endif %}"></polyline>
                   {% for point in insights.price_trend.points %}
                     {% if point.y and (loop.index0 % 4 == 0 or loop.last) %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.2" class="market-line-point {% if trend.accent == 'blue' %}market-line-point-blue{% endif %}">
-                        <title>{{ point.label }} | {{ point.display }} | {{ point.count }} ta e'lon asosida</title>
+                        <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | {{ point.count }} ta e'lon asosida</title>
                       </circle>
                     {% endif %}
                   {% endfor %}
                   {% for point in insights.price_trend.points %}
                     {% if point.y %}
                       <circle cx="{{ point.x }}" cy="{{ point.y }}" r="10" class="market-hover-point">
-                        <title>{{ point.label }} | {{ point.display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
+                        <title>{{ point.label }} | {{ point.display }} | Haftalik avg: {{ point.moving_display }} | Hisoblangan data: {{ point.count }} ta e'lon</title>
                       </circle>
                     {% endif %}
                   {% endfor %}
@@ -397,7 +397,7 @@
       <section class="insight-strip">
         <div><b>Kvartira sotuv narxlari</b><span>{{ insights.sale_apartment_m2_trend.average_display }}</span></div>
         <div><b>Oxirgi trend qiymati</b><span>{{ insights.price_trend.latest_display }}</span></div>
-        <div><b>5 kunlik avg</b><span>{{ insights.price_trend.moving_average_latest_display }}</span></div>
+        <div><b>Haftalik avg</b><span>{{ insights.price_trend.moving_average_latest_display }}</span></div>
         <div><b>Anomaliya olib tashlandi</b><span>{{ insights.price_trend.anomaly_total }}</span></div>
       </section>
     </section>

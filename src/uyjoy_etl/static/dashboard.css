@@ -1461,7 +1461,8 @@ pre {
 
 .market-main-line {
   stroke: #007c6b;
-  stroke-width: 4.2;
+  stroke-width: 3.8;
+  opacity: 0.82;
   filter: drop-shadow(0 2px 2px rgba(0, 124, 107, 0.12));
 }
 
@@ -1471,9 +1472,10 @@ pre {
 }
 
 .market-smooth-line {
-  stroke: #4f72b8;
-  stroke-width: 3.2;
-  opacity: 0.9;
+  stroke: #102a56;
+  stroke-width: 4.8;
+  opacity: 1;
+  filter: drop-shadow(0 2px 3px rgba(16, 42, 86, 0.22));
 }
 
 .market-line-point {

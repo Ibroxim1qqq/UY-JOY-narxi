@@ -1299,7 +1299,7 @@ class ListingRepository:
         for index, row in enumerate(rows):
             raw_value = row.get("avg_value")
             x = pad_left + (usable_width * index / denominator)
-            moving_average = self._moving_average_value(rows, index, window=5)
+            moving_average = self._moving_average_value(rows, index, window=7)
             moving_y = None
             moving_display = "-"
             if moving_average is not None:
@@ -1341,7 +1341,7 @@ class ListingRepository:
 
         latest_value = values[-1]
         average_value = sum(values) / len(values)
-        latest_moving_average = self._last_moving_average(rows, window=5)
+        latest_moving_average = self._last_moving_average(rows, window=7)
         average_y = pad_top + ((y_max - average_value) / (y_max - y_min) * usable_height)
         return {
             "metric_label": metric_label,

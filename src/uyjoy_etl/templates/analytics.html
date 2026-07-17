@@ -152,7 +152,7 @@
           </div>
           <div class="line-kpis">
             <span>Oxirgi: <strong>{{ insights.price_trend.latest_display }}</strong></span>
-            <span>5 kunlik avg: <strong>{{ insights.price_trend.moving_average_latest_display }}</strong></span>
+            <span>Haftalik avg: <strong>{{ insights.price_trend.moving_average_latest_display }}</strong></span>
             <span>O'rtacha: <strong>{{ insights.price_trend.average_display }}</strong></span>
             <span>Anomaliya: <strong>{{ insights.price_trend.anomaly_total }}</strong></span>
           </div>
@@ -164,7 +164,7 @@
                 <line x1="592" y1="17" x2="626" y2="17" class="price-line legend-line"></line>
                 <text x="632" y="21">Kunlik avg</text>
                 <line x1="592" y1="37" x2="626" y2="37" class="moving-average-line legend-line"></line>
-                <text x="632" y="41">5 kunlik avg</text>
+                <text x="632" y="41">Haftalik avg</text>
               </g>
               <line x1="58" y1="22" x2="58" y2="242" class="axis-line"></line>
               <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
@@ -183,7 +183,7 @@
               {% for point in insights.price_trend.points %}
                 {% if point.y %}
                   <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" class="price-point">
-                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon | anomaly {{ point.anomaly_count }}</title>
+                    <title>{{ point.label }} | {{ point.display }} | Haftalik avg {{ point.moving_display }} | {{ point.count }} ta e'lon | anomaly {{ point.anomaly_count }}</title>
                   </circle>
                 {% endif %}
                 {% if point.show_label %}
@@ -205,7 +205,7 @@
           </div>
           <div class="line-kpis">
             <span>Oxirgi: <strong>{{ insights.sale_apartment_m2_trend.latest_display }}</strong></span>
-            <span>5 kunlik avg: <strong>{{ insights.sale_apartment_m2_trend.moving_average_latest_display }}</strong></span>
+            <span>Haftalik avg: <strong>{{ insights.sale_apartment_m2_trend.moving_average_latest_display }}</strong></span>
             <span>O'rtacha: <strong>{{ insights.sale_apartment_m2_trend.average_display }}</strong></span>
             <span>Anomaliya: <strong>{{ insights.sale_apartment_m2_trend.anomaly_total }}</strong></span>
           </div>
@@ -217,7 +217,7 @@
                 <line x1="592" y1="17" x2="626" y2="17" class="price-line legend-line"></line>
                 <text x="632" y="21">Kunlik avg</text>
                 <line x1="592" y1="37" x2="626" y2="37" class="moving-average-line legend-line"></line>
-                <text x="632" y="41">5 kunlik avg</text>
+                <text x="632" y="41">Haftalik avg</text>
               </g>
               <line x1="58" y1="22" x2="58" y2="242" class="axis-line"></line>
               <line x1="58" y1="242" x2="740" y2="242" class="axis-line"></line>
@@ -236,7 +236,7 @@
               {% for point in insights.sale_apartment_m2_trend.points %}
                 {% if point.y %}
                   <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3.5" class="price-point">
-                    <title>{{ point.label }} | {{ point.display }} | 5 kunlik avg {{ point.moving_display }} | {{ point.count }} ta e'lon | anomaly {{ point.anomaly_count }}</title>
+                    <title>{{ point.label }} | {{ point.display }} | Haftalik avg {{ point.moving_display }} | {{ point.count }} ta e'lon | anomaly {{ point.anomaly_count }}</title>
                   </circle>
                 {% endif %}
                 {% if point.show_label %}
