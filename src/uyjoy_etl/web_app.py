@@ -341,12 +341,14 @@ def powerbi_listings_csv(_: None = Depends(_require_dashboard_auth)) -> Streamin
     )
 
 
+@app.get("/api/looker/listings.csv")
 @app.get("/api/looker/listings_lite.csv")
 def looker_listings_lite_csv(
     token: str = "",
-    days: int = Query(default=90, ge=14, le=365),
-    limit: int = Query(default=10000, ge=100, le=50000),
+    days: int = Query(default=365, ge=14, le=365),
+    limit: int = Query(default=100000, ge=100, le=100000),
     offset: int = Query(default=0, ge=0),
+    description_limit: int = Query(default=80, ge=80, le=1200),
 ) -> StreamingResponse:
     """Looker Studio / Google Sheets uchun har bir e'lon alohida row bo'lgan CSV."""
 
@@ -395,9 +397,14 @@ def looker_listings_lite_csv(
         "updated_at",
     ]
     return _csv_stream_response(
-        rows=repository.iter_looker_listing_rows(days=days, limit=limit, offset=offset),
+        rows=repository.iter_looker_listing_rows(
+            days=days,
+            limit=limit,
+            offset=offset,
+            description_limit=description_limit,
+        ),
         headers=headers,
-        filename="uyjoy_looker_listings_lite.csv",
+        filename="uyjoy_looker_listings.csv",
     )
 
 

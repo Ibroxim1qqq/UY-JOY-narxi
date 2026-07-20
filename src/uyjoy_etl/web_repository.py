@@ -930,15 +930,17 @@ class ListingRepository:
     def iter_looker_listing_rows(
         self,
         *,
-        days: int = 90,
-        limit: int = 10000,
+        days: int = 365,
+        limit: int = 100000,
         offset: int = 0,
+        description_limit: int = 80,
     ) -> list[dict[str, Any]]:
         """Looker Studio / Google Sheets uchun yengil, kontaktlarsiz CSV dataset."""
 
         days = min(max(days, 14), 365)
-        limit = min(max(limit, 100), 50000)
+        limit = min(max(limit, 100), 100000)
         offset = max(offset, 0)
+        description_limit = min(max(description_limit, 80), 1200)
         price_uzs_expr = self._price_uzs_expression()
         city_expr = self._canonical_city_expr()
         district_expr = self._canonical_district_expr()
@@ -962,7 +964,7 @@ class ListingRepository:
                             ' ',
                             'g'
                         ),
-                        1200
+                        %(description_limit)s
                     ) as description,
                     property_type,
                     case
@@ -1045,7 +1047,7 @@ class ListingRepository:
                 limit %(limit)s
                 offset %(offset)s
                 """,
-                {"days": days, "limit": limit, "offset": offset},
+                {"days": days, "limit": limit, "offset": offset, "description_limit": description_limit},
             ).fetchall()
         return [dict(row) for row in rows]
 
