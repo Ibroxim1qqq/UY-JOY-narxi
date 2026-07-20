@@ -377,7 +377,13 @@ def looker_listings_lite_csv(token: str = "") -> StreamingResponse:
 
 
 @app.get("/api/looker/daily_metrics.csv")
-def looker_daily_metrics_csv(token: str = "") -> StreamingResponse:
+def looker_daily_metrics_csv(
+    token: str = "",
+    days: int = Query(default=180, ge=14, le=365),
+    level: str = "city",
+    include_rooms: bool = False,
+    include_source: bool = False,
+) -> StreamingResponse:
     """Looker Studio uchun kunlik agregat metrikalar CSV exporti."""
 
     _require_looker_export_token(token)
@@ -386,9 +392,7 @@ def looker_daily_metrics_csv(token: str = "") -> StreamingResponse:
         "source",
         "property_type",
         "deal_type",
-        "region_name",
-        "city_name",
-        "district_name",
+        "location_name",
         "room_count",
         "listing_count",
         "avg_price_uzs",
@@ -397,7 +401,12 @@ def looker_daily_metrics_csv(token: str = "") -> StreamingResponse:
         "avg_price_per_sotix_uzs",
     ]
     return _csv_stream_response(
-        rows=repository.iter_looker_daily_metric_rows(),
+        rows=repository.iter_looker_daily_metric_rows(
+            days=days,
+            level=level,
+            include_rooms=include_rooms,
+            include_source=include_source,
+        ),
         headers=headers,
         filename="uyjoy_looker_daily_metrics.csv",
     )

@@ -153,6 +153,5 @@ class WebRepositoryTest(unittest.TestCase):
             "1,234,567 so'm / sotix",
         )
 
-
 if __name__ == "__main__":
     unittest.main()

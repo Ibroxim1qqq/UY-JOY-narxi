@@ -985,26 +985,42 @@ class ListingRepository:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def iter_looker_daily_metric_rows(self) -> list[dict[str, Any]]:
+    def iter_looker_daily_metric_rows(
+        self,
+        *,
+        days: int = 180,
+        level: str = "city",
+        include_rooms: bool = False,
+        include_source: bool = False,
+    ) -> list[dict[str, Any]]:
         """Looker chartlari uchun kunlik segment metrikalarini oldindan agregatlaydi."""
 
+        days = min(max(days, 14), 365)
+        level = level if level in {"region", "city", "district"} else "city"
         price_uzs_expr = self._price_uzs_expression()
         city_expr = self._canonical_city_expr()
         district_expr = self._canonical_district_expr()
         region_expr = self._canonical_region_expr()
+        location_select = {
+            "region": "region_name",
+            "city": "city_name",
+            "district": "district_name",
+        }[level]
+        source_select = "source" if include_source else "'all'::text as source"
+        room_select = "room_count" if include_rooms else "null::integer as room_count"
         with self._database.connect() as conn:
             rows = conn.execute(
                 f"""
                 with base as (
                     select
                         coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as posted_date,
-                        source,
+                        {source_select},
                         property_type,
                         deal_type,
                         {region_expr} as region_name,
                         {city_expr} as city_name,
                         {district_expr} as district_name,
-                        room_count,
+                        {room_select},
                         {price_uzs_expr} as price_uzs,
                         case
                             when property_type = 'apartment'
@@ -1024,15 +1040,15 @@ class ListingRepository:
                     where (quality_status is null or quality_status = 'ok')
                       and price_value is not null
                       and price_value > 0
+                      and coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date
+                            >= current_date - (%(days)s::int * interval '1 day')
                 )
                 select
                     posted_date,
                     source,
                     property_type,
                     deal_type,
-                    region_name,
-                    city_name,
-                    district_name,
+                    {location_select} as location_name,
                     room_count,
                     count(*) as listing_count,
                     avg(price_uzs) as avg_price_uzs,
@@ -1041,9 +1057,12 @@ class ListingRepository:
                     avg(price_per_sotix_uzs) as avg_price_per_sotix_uzs
                 from base
                 where posted_date is not null
-                group by posted_date, source, property_type, deal_type, region_name, city_name, district_name, room_count
-                order by posted_date desc, region_name, city_name, district_name
+                  and nullif({location_select}, '') is not null
+                group by posted_date, source, property_type, deal_type, {location_select}, room_count
+                order by posted_date desc, {location_select}, property_type, deal_type
                 """
+                ,
+                {"days": days},
             ).fetchall()
         return [dict(row) for row in rows]
 
