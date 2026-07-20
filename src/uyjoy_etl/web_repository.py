@@ -927,11 +927,18 @@ class ListingRepository:
             result.append(item)
         return result
 
-    def iter_looker_listing_rows(self, *, days: int = 90, limit: int = 20000) -> list[dict[str, Any]]:
+    def iter_looker_listing_rows(
+        self,
+        *,
+        days: int = 90,
+        limit: int = 10000,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
         """Looker Studio / Google Sheets uchun yengil, kontaktlarsiz CSV dataset."""
 
         days = min(max(days, 14), 365)
         limit = min(max(limit, 100), 50000)
+        offset = max(offset, 0)
         price_uzs_expr = self._price_uzs_expression()
         city_expr = self._canonical_city_expr()
         district_expr = self._canonical_district_expr()
@@ -942,20 +949,63 @@ class ListingRepository:
                 select
                     id,
                     source,
+                    source_name,
+                    source_listing_id,
                     listing_code,
                     source_url,
+                    source_category,
                     title,
+                    left(
+                        regexp_replace(
+                            regexp_replace(coalesce(description, ''), '<[^>]+>', ' ', 'g'),
+                            '\\s+',
+                            ' ',
+                            'g'
+                        ),
+                        1200
+                    ) as description,
                     property_type,
+                    case
+                        when property_type = 'apartment' then 'Kvartira'
+                        when property_type = 'house' then 'Hovli'
+                        when property_type = 'land' then 'Yer'
+                        else 'Boshqa'
+                    end as property_type_label,
                     deal_type,
+                    case
+                        when deal_type = 'sale' then 'Sotuv'
+                        when deal_type = 'rent' then 'Ijara'
+                        else 'Boshqa'
+                    end as deal_type_label,
+                    concat(
+                        case
+                            when property_type = 'apartment' then 'Kvartira'
+                            when property_type = 'house' then 'Hovli'
+                            when property_type = 'land' then 'Yer'
+                            else 'Boshqa'
+                        end,
+                        ' ',
+                        case
+                            when deal_type = 'sale' then 'sotuv'
+                            when deal_type = 'rent' then 'ijara'
+                            else 'boshqa'
+                        end
+                    ) as segment_label,
+                    price_display,
                     {price_uzs_expr} as price_uzs,
-                    currency_code as original_currency,
-                    price_value as original_price,
+                    currency_code,
+                    price_value,
+                    is_price_negotiable,
                     {region_expr} as region_name,
                     {city_expr} as city_name,
                     {district_expr} as district_name,
+                    neighborhood,
+                    address,
                     room_count,
                     area_m2,
                     land_sotix,
+                    floor_number,
+                    total_floors,
                     case
                         when property_type = 'apartment'
                          and area_m2 is not null
@@ -970,9 +1020,16 @@ class ListingRepository:
                          and land_sotix <= 1000
                             then {price_uzs_expr} / nullif(land_sotix, 0)
                     end as price_per_sotix_uzs,
+                    seller_type,
+                    is_business,
+                    has_media,
+                    views,
+                    quality_status,
                     coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as posted_date,
                     coalesce(posted_at, first_seen_at, last_seen_at, updated_at) as posted_at,
-                    last_seen_at
+                    first_seen_at,
+                    last_seen_at,
+                    updated_at
                 from real_estate_listings
                 where (quality_status is null or quality_status = 'ok')
                   and price_value is not null
@@ -986,8 +1043,9 @@ class ListingRepository:
                         >= current_date - (%(days)s::int * interval '1 day')
                 order by coalesce(posted_at, first_seen_at, last_seen_at, updated_at) desc nulls last, id desc
                 limit %(limit)s
+                offset %(offset)s
                 """,
-                {"days": days, "limit": limit},
+                {"days": days, "limit": limit, "offset": offset},
             ).fetchall()
         return [dict(row) for row in rows]
 
