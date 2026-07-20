@@ -342,7 +342,11 @@ def powerbi_listings_csv(_: None = Depends(_require_dashboard_auth)) -> Streamin
 
 
 @app.get("/api/looker/listings_lite.csv")
-def looker_listings_lite_csv(token: str = "") -> StreamingResponse:
+def looker_listings_lite_csv(
+    token: str = "",
+    days: int = Query(default=90, ge=14, le=365),
+    limit: int = Query(default=20000, ge=100, le=50000),
+) -> StreamingResponse:
     """Looker Studio / Google Sheets uchun kontaktlarsiz listing-level CSV."""
 
     _require_looker_export_token(token)
@@ -370,7 +374,7 @@ def looker_listings_lite_csv(token: str = "") -> StreamingResponse:
         "last_seen_at",
     ]
     return _csv_stream_response(
-        rows=repository.iter_looker_listing_rows(),
+        rows=repository.iter_looker_listing_rows(days=days, limit=limit),
         headers=headers,
         filename="uyjoy_looker_listings_lite.csv",
     )
@@ -391,14 +395,23 @@ def looker_daily_metrics_csv(
         "posted_date",
         "source",
         "property_type",
+        "property_type_label",
         "deal_type",
+        "deal_type_label",
+        "segment_label",
+        "location_level",
         "location_name",
+        "region_name",
+        "city_name",
+        "district_name",
         "room_count",
         "listing_count",
         "avg_price_uzs",
         "median_price_uzs",
         "avg_price_per_m2_uzs",
         "avg_price_per_sotix_uzs",
+        "avg_area_m2",
+        "avg_land_sotix",
     ]
     return _csv_stream_response(
         rows=repository.iter_looker_daily_metric_rows(

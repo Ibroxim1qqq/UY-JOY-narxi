@@ -927,9 +927,11 @@ class ListingRepository:
             result.append(item)
         return result
 
-    def iter_looker_listing_rows(self) -> list[dict[str, Any]]:
+    def iter_looker_listing_rows(self, *, days: int = 90, limit: int = 20000) -> list[dict[str, Any]]:
         """Looker Studio / Google Sheets uchun yengil, kontaktlarsiz CSV dataset."""
 
+        days = min(max(days, 14), 365)
+        limit = min(max(limit, 100), 50000)
         price_uzs_expr = self._price_uzs_expression()
         city_expr = self._canonical_city_expr()
         district_expr = self._canonical_district_expr()
@@ -980,8 +982,12 @@ class ListingRepository:
                       or nullif(district_name, '') is not null
                       or nullif(address, '') is not null
                   )
+                  and coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date
+                        >= current_date - (%(days)s::int * interval '1 day')
                 order by coalesce(posted_at, first_seen_at, last_seen_at, updated_at) desc nulls last, id desc
-                """
+                limit %(limit)s
+                """,
+                {"days": days, "limit": limit},
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1006,6 +1012,8 @@ class ListingRepository:
             "city": "city_name",
             "district": "district_name",
         }[level]
+        city_output = "city_name" if level in {"city", "district"} else "null::text"
+        district_output = "district_name" if level == "district" else "null::text"
         source_select = "source" if include_source else "'all'::text as source"
         room_select = "room_count" if include_rooms else "null::integer as room_count"
         with self._database.connect() as conn:
@@ -1021,6 +1029,8 @@ class ListingRepository:
                         {city_expr} as city_name,
                         {district_expr} as district_name,
                         {room_select},
+                        area_m2,
+                        land_sotix,
                         {price_uzs_expr} as price_uzs,
                         case
                             when property_type = 'apartment'
@@ -1042,27 +1052,87 @@ class ListingRepository:
                       and price_value > 0
                       and coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date
                             >= current_date - (%(days)s::int * interval '1 day')
+                ),
+                scoped as (
+                    select
+                        posted_date,
+                        source,
+                        property_type,
+                        deal_type,
+                        %(level)s::text as location_level,
+                        {location_select} as location_name,
+                        region_name as export_region_name,
+                        {city_output} as export_city_name,
+                        {district_output} as export_district_name,
+                        room_count,
+                        area_m2,
+                        land_sotix,
+                        price_uzs,
+                        price_per_m2_uzs,
+                        price_per_sotix_uzs
+                    from base
+                    where posted_date is not null
+                      and nullif({location_select}, '') is not null
                 )
                 select
                     posted_date,
                     source,
                     property_type,
+                    case
+                        when property_type = 'apartment' then 'Kvartira'
+                        when property_type = 'house' then 'Hovli'
+                        when property_type = 'land' then 'Yer'
+                        else 'Boshqa'
+                    end as property_type_label,
                     deal_type,
-                    {location_select} as location_name,
+                    case
+                        when deal_type = 'sale' then 'Sotuv'
+                        when deal_type = 'rent' then 'Ijara'
+                        else 'Boshqa'
+                    end as deal_type_label,
+                    concat(
+                        case
+                            when property_type = 'apartment' then 'Kvartira'
+                            when property_type = 'house' then 'Hovli'
+                            when property_type = 'land' then 'Yer'
+                            else 'Boshqa'
+                        end,
+                        ' ',
+                        case
+                            when deal_type = 'sale' then 'sotuv'
+                            when deal_type = 'rent' then 'ijara'
+                            else 'boshqa'
+                        end
+                    ) as segment_label,
+                    location_level,
+                    location_name,
+                    export_region_name as region_name,
+                    export_city_name as city_name,
+                    export_district_name as district_name,
                     room_count,
                     count(*) as listing_count,
                     avg(price_uzs) as avg_price_uzs,
                     percentile_cont(0.5) within group (order by price_uzs) as median_price_uzs,
                     avg(price_per_m2_uzs) as avg_price_per_m2_uzs,
-                    avg(price_per_sotix_uzs) as avg_price_per_sotix_uzs
-                from base
-                where posted_date is not null
-                  and nullif({location_select}, '') is not null
-                group by posted_date, source, property_type, deal_type, {location_select}, room_count
-                order by posted_date desc, {location_select}, property_type, deal_type
+                    avg(price_per_sotix_uzs) as avg_price_per_sotix_uzs,
+                    avg(area_m2) filter (where area_m2 is not null and area_m2 > 0) as avg_area_m2,
+                    avg(land_sotix) filter (where land_sotix is not null and land_sotix > 0) as avg_land_sotix
+                from scoped
+                group by
+                    posted_date,
+                    source,
+                    property_type,
+                    deal_type,
+                    location_level,
+                    location_name,
+                    export_region_name,
+                    export_city_name,
+                    export_district_name,
+                    room_count
+                order by posted_date desc, location_name, property_type, deal_type
                 """
                 ,
-                {"days": days},
+                {"days": days, "level": level},
             ).fetchall()
         return [dict(row) for row in rows]
 
