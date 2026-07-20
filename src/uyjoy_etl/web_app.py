@@ -54,6 +54,14 @@ def _require_dashboard_auth(credentials: HTTPBasicCredentials | None = Depends(s
         )
 
 
+def _require_looker_export_token(token: str) -> None:
+    """Google Sheets/Looker CSV exportini optional URL token bilan himoya qiladi."""
+
+    expected_token = os.getenv("LOOKER_EXPORT_TOKEN", "").strip()
+    if expected_token and not secrets.compare_digest(token, expected_token):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Looker export token noto'g'ri")
+
+
 def _credentials_match(
     credentials: HTTPBasicCredentials,
     expected_username: str,
@@ -330,6 +338,86 @@ def powerbi_listings_csv(_: None = Depends(_require_dashboard_auth)) -> Streamin
         iter([generate_csv()]),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="uyjoy_powerbi_listings.csv"'},
+    )
+
+
+@app.get("/api/looker/listings_lite.csv")
+def looker_listings_lite_csv(token: str = "") -> StreamingResponse:
+    """Looker Studio / Google Sheets uchun kontaktlarsiz listing-level CSV."""
+
+    _require_looker_export_token(token)
+    headers = [
+        "id",
+        "source",
+        "listing_code",
+        "source_url",
+        "title",
+        "property_type",
+        "deal_type",
+        "price_uzs",
+        "original_currency",
+        "original_price",
+        "region_name",
+        "city_name",
+        "district_name",
+        "room_count",
+        "area_m2",
+        "land_sotix",
+        "price_per_m2_uzs",
+        "price_per_sotix_uzs",
+        "posted_date",
+        "posted_at",
+        "last_seen_at",
+    ]
+    return _csv_stream_response(
+        rows=repository.iter_looker_listing_rows(),
+        headers=headers,
+        filename="uyjoy_looker_listings_lite.csv",
+    )
+
+
+@app.get("/api/looker/daily_metrics.csv")
+def looker_daily_metrics_csv(token: str = "") -> StreamingResponse:
+    """Looker Studio uchun kunlik agregat metrikalar CSV exporti."""
+
+    _require_looker_export_token(token)
+    headers = [
+        "posted_date",
+        "source",
+        "property_type",
+        "deal_type",
+        "region_name",
+        "city_name",
+        "district_name",
+        "room_count",
+        "listing_count",
+        "avg_price_uzs",
+        "median_price_uzs",
+        "avg_price_per_m2_uzs",
+        "avg_price_per_sotix_uzs",
+    ]
+    return _csv_stream_response(
+        rows=repository.iter_looker_daily_metric_rows(),
+        headers=headers,
+        filename="uyjoy_looker_daily_metrics.csv",
+    )
+
+
+def _csv_stream_response(
+    *,
+    rows: list[dict[str, object]],
+    headers: list[str],
+    filename: str,
+) -> StreamingResponse:
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+    return StreamingResponse(
+        iter([buffer.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

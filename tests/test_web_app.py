@@ -5,9 +5,16 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from fastapi.security import HTTPBasicCredentials
 
-from uyjoy_etl.web_app import _credentials_match, _parse_optional_date, _require_dashboard_auth, app
+from uyjoy_etl.web_app import (
+    _credentials_match,
+    _parse_optional_date,
+    _require_dashboard_auth,
+    _require_looker_export_token,
+    app,
+)
 from uyjoy_etl.web_repository import ListingRepository, MarketInsightFilters
 
 
@@ -22,6 +29,15 @@ class WebAppAuthTest(unittest.TestCase):
         with patch.dict("os.environ", {}, clear=True):
             self.assertIsNone(_require_dashboard_auth(None))
 
+    def test_looker_export_token_is_optional_but_enforced_when_configured(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertIsNone(_require_looker_export_token(""))
+
+        with patch.dict("os.environ", {"LOOKER_EXPORT_TOKEN": "abc"}, clear=True):
+            self.assertIsNone(_require_looker_export_token("abc"))
+            with self.assertRaises(HTTPException):
+                _require_looker_export_token("wrong")
+
 
 class MarketDashboardRouteTest(unittest.TestCase):
     def test_market_dashboard_route_and_template_exist(self) -> None:
@@ -30,6 +46,12 @@ class MarketDashboardRouteTest(unittest.TestCase):
 
         self.assertIn("/market-dashboard", paths)
         self.assertTrue(template_path.exists())
+
+    def test_looker_csv_routes_exist(self) -> None:
+        paths = {route.path for route in app.routes}
+
+        self.assertIn("/api/looker/listings_lite.csv", paths)
+        self.assertIn("/api/looker/daily_metrics.csv", paths)
 
     def test_empty_query_date_is_accepted_as_none(self) -> None:
         self.assertIsNone(_parse_optional_date(""))

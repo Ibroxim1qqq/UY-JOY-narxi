@@ -927,6 +927,126 @@ class ListingRepository:
             result.append(item)
         return result
 
+    def iter_looker_listing_rows(self) -> list[dict[str, Any]]:
+        """Looker Studio / Google Sheets uchun yengil, kontaktlarsiz CSV dataset."""
+
+        price_uzs_expr = self._price_uzs_expression()
+        city_expr = self._canonical_city_expr()
+        district_expr = self._canonical_district_expr()
+        region_expr = self._canonical_region_expr()
+        with self._database.connect() as conn:
+            rows = conn.execute(
+                f"""
+                select
+                    id,
+                    source,
+                    listing_code,
+                    source_url,
+                    title,
+                    property_type,
+                    deal_type,
+                    {price_uzs_expr} as price_uzs,
+                    currency_code as original_currency,
+                    price_value as original_price,
+                    {region_expr} as region_name,
+                    {city_expr} as city_name,
+                    {district_expr} as district_name,
+                    room_count,
+                    area_m2,
+                    land_sotix,
+                    case
+                        when property_type = 'apartment'
+                         and area_m2 is not null
+                         and area_m2 >= 10
+                         and area_m2 <= 1000
+                            then {price_uzs_expr} / nullif(area_m2, 0)
+                    end as price_per_m2_uzs,
+                    case
+                        when property_type = 'house'
+                         and land_sotix is not null
+                         and land_sotix > 0
+                         and land_sotix <= 1000
+                            then {price_uzs_expr} / nullif(land_sotix, 0)
+                    end as price_per_sotix_uzs,
+                    coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as posted_date,
+                    coalesce(posted_at, first_seen_at, last_seen_at, updated_at) as posted_at,
+                    last_seen_at
+                from real_estate_listings
+                where (quality_status is null or quality_status = 'ok')
+                  and price_value is not null
+                  and price_value > 0
+                  and (
+                      nullif(city_name, '') is not null
+                      or nullif(district_name, '') is not null
+                      or nullif(address, '') is not null
+                  )
+                order by coalesce(posted_at, first_seen_at, last_seen_at, updated_at) desc nulls last, id desc
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def iter_looker_daily_metric_rows(self) -> list[dict[str, Any]]:
+        """Looker chartlari uchun kunlik segment metrikalarini oldindan agregatlaydi."""
+
+        price_uzs_expr = self._price_uzs_expression()
+        city_expr = self._canonical_city_expr()
+        district_expr = self._canonical_district_expr()
+        region_expr = self._canonical_region_expr()
+        with self._database.connect() as conn:
+            rows = conn.execute(
+                f"""
+                with base as (
+                    select
+                        coalesce(posted_at, first_seen_at, last_seen_at, updated_at)::date as posted_date,
+                        source,
+                        property_type,
+                        deal_type,
+                        {region_expr} as region_name,
+                        {city_expr} as city_name,
+                        {district_expr} as district_name,
+                        room_count,
+                        {price_uzs_expr} as price_uzs,
+                        case
+                            when property_type = 'apartment'
+                             and area_m2 is not null
+                             and area_m2 >= 10
+                             and area_m2 <= 1000
+                                then {price_uzs_expr} / nullif(area_m2, 0)
+                        end as price_per_m2_uzs,
+                        case
+                            when property_type = 'house'
+                             and land_sotix is not null
+                             and land_sotix > 0
+                             and land_sotix <= 1000
+                                then {price_uzs_expr} / nullif(land_sotix, 0)
+                        end as price_per_sotix_uzs
+                    from real_estate_listings
+                    where (quality_status is null or quality_status = 'ok')
+                      and price_value is not null
+                      and price_value > 0
+                )
+                select
+                    posted_date,
+                    source,
+                    property_type,
+                    deal_type,
+                    region_name,
+                    city_name,
+                    district_name,
+                    room_count,
+                    count(*) as listing_count,
+                    avg(price_uzs) as avg_price_uzs,
+                    percentile_cont(0.5) within group (order by price_uzs) as median_price_uzs,
+                    avg(price_per_m2_uzs) as avg_price_per_m2_uzs,
+                    avg(price_per_sotix_uzs) as avg_price_per_sotix_uzs
+                from base
+                where posted_date is not null
+                group by posted_date, source, property_type, deal_type, region_name, city_name, district_name, room_count
+                order by posted_date desc, region_name, city_name, district_name
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def _normalize_market_filters(self, filters: MarketInsightFilters) -> MarketInsightFilters:
         metric = filters.metric if filters.metric in {"auto", "avg_price", "avg_price_m2", "avg_price_sotix"} else "auto"
         days = min(max(filters.days, 14), 180)
