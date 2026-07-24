@@ -25,6 +25,18 @@ services:
       - key: MB_JETTY_PORT
         value: "10000"
       - key: JAVA_TOOL_OPTIONS
-        value: "-Xmx430m"
+        value: "-Xmx300m -XX:+UseSerialGC"
+      - key: MB_JETTY_MAXTHREADS
+        value: "20"
+      - key: MB_JETTY_MINTHREADS
+        value: "2"
+      - key: MB_DB_CONNECTION_POOL_MAX_SIZE
+        value: "3"
+      - key: MB_ANON_TRACKING_ENABLED
+        value: "false"
+      - key: MB_SEND_ANONYMOUS_USAGE_STATS
+        value: "false"
+      - key: MB_CHECK_FOR_UPDATES
+        value: "false"
       - key: MB_DB_CONNECTION_URI
         sync: false
