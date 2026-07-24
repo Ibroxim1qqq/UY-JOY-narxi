@@ -23,11 +23,15 @@ services:
     healthCheckPath: /api/health
     envVars:
       - key: MB_JETTY_PORT
-        value: "10000"
+        value: "3001"
       - key: MB_JETTY_HOST
-        value: "0.0.0.0"
+        value: "127.0.0.1"
+      - key: INTERNAL_METABASE_PORT
+        value: "3001"
+      - key: INTERNAL_METABASE_HOST
+        value: "127.0.0.1"
       - key: JAVA_TOOL_OPTIONS
-        value: "-Xmx350m -XX:ActiveProcessorCount=1"
+        value: "-Xmx300m -XX:ActiveProcessorCount=1"
       - key: MB_JETTY_MAXTHREADS
         value: "20"
       - key: MB_JETTY_MINTHREADS
