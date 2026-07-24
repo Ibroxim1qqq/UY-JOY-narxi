@@ -24,8 +24,10 @@ services:
     envVars:
       - key: MB_JETTY_PORT
         value: "10000"
+      - key: MB_JETTY_HOST
+        value: "0.0.0.0"
       - key: JAVA_TOOL_OPTIONS
-        value: "-Xmx300m -XX:+UseSerialGC"
+        value: "-Xmx350m -XX:ActiveProcessorCount=1"
       - key: MB_JETTY_MAXTHREADS
         value: "20"
       - key: MB_JETTY_MINTHREADS
