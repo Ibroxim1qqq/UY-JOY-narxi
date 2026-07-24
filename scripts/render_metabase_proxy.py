@@ -51,6 +51,9 @@ def start_metabase() -> subprocess.Popen[bytes]:
 class ProxyHandler(BaseHTTPRequestHandler):
     server_version = "uyjoy-metabase-proxy/1.0"
 
+    def do_HEAD(self) -> None:
+        self._handle(head_only=True)
+
     def do_GET(self) -> None:
         self._handle()
 
@@ -70,20 +73,23 @@ class ProxyHandler(BaseHTTPRequestHandler):
         sys.stdout.write("%s - %s\n" % (self.log_date_time_string(), fmt % args))
         sys.stdout.flush()
 
-    def _handle(self) -> None:
+    def _handle(self, head_only: bool = False) -> None:
         child = getattr(self.server, "metabase_process", None)
         if child is not None and child.poll() is not None:
-            self._json(500, {"status": "error", "message": "Metabase exited"})
-            return
+            print(f"Metabase exited with code {child.returncode}; restarting", flush=True)
+            child = start_metabase()
+            self.server.metabase_process = child  # type: ignore[attr-defined]
 
         if not metabase_is_ready():
             if self.path.startswith("/api/health"):
-                self._json(200, {"status": "starting", "metabase": "booting"})
+                self._json(200, {"status": "starting", "metabase": "booting"}, head_only)
                 return
-            self.send_response(503)
+            self.send_response(200 if head_only else 503)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Retry-After", "10")
             self.end_headers()
+            if head_only:
+                return
             self.wfile.write(
                 b"<!doctype html><title>Metabase starting</title>"
                 b"<meta http-equiv='refresh' content='10'>"
@@ -94,7 +100,7 @@ class ProxyHandler(BaseHTTPRequestHandler):
             return
 
         body_length = int(self.headers.get("Content-Length", "0") or "0")
-        request_body = self.rfile.read(body_length) if body_length else None
+        request_body = self.rfile.read(body_length) if body_length and not head_only else None
         headers = {
             key: value
             for key, value in self.headers.items()
@@ -105,11 +111,12 @@ class ProxyHandler(BaseHTTPRequestHandler):
         conn = None
         try:
             conn = http.client.HTTPConnection(METABASE_HOST, METABASE_PORT, timeout=120)
-            conn.request(self.command, self.path, body=request_body, headers=headers)
+            method = "HEAD" if head_only else self.command
+            conn.request(method, self.path, body=request_body, headers=headers)
             response = conn.getresponse()
             response_body = response.read()
         except Exception as exc:  # pragma: no cover - only used in Render runtime
-            self._json(502, {"status": "error", "message": str(exc)})
+            self._json(502, {"status": "error", "message": str(exc)}, head_only)
             return
         finally:
             if conn is not None:
@@ -120,14 +127,20 @@ class ProxyHandler(BaseHTTPRequestHandler):
             if key.lower() not in HOP_BY_HOP_HEADERS:
                 self.send_header(key, value)
         self.end_headers()
+        if head_only:
+            return
         self.wfile.write(response_body)
 
-    def _json(self, status_code: int, payload: dict[str, str]) -> None:
+    def _json(
+        self, status_code: int, payload: dict[str, str], head_only: bool = False
+    ) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
+        if head_only:
+            return
         self.wfile.write(body)
 
 

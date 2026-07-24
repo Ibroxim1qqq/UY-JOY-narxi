@@ -31,7 +31,7 @@ services:
       - key: INTERNAL_METABASE_HOST
         value: "127.0.0.1"
       - key: JAVA_TOOL_OPTIONS
-        value: "-Xmx300m -XX:ActiveProcessorCount=1"
+        value: "-Xmx240m -XX:ActiveProcessorCount=1"
       - key: MB_JETTY_MAXTHREADS
         value: "20"
       - key: MB_JETTY_MINTHREADS
