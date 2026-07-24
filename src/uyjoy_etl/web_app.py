@@ -1,46 +1,46 @@
 from __future__ import annotations
 
-import csv
-import io
 import os
+import pickle
 import secrets
-from datetime import date
-from pathlib import Path
-from urllib.parse import urlencode
+import warnings
+from datetime import datetime
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi import Body, Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from uyjoy_etl.config import load_config
 from uyjoy_etl.db import Database
-from uyjoy_etl.web_repository import (
-    ListingFilters,
-    ListingRepository,
-    MarketInsightFilters,
-    is_missing_table_error,
-    parse_decimal,
+from uyjoy_etl.valuation import (
+    MODEL_PATH,
+    ApartmentValuationService,
+    ValuationInputError,
+    ValuationModelError,
+    build_apartment_valuation_response,
+    parse_apartment_valuation_payload,
 )
+from uyjoy_etl.web_repository import ListingRepository
 
-PACKAGE_DIR = Path(__file__).resolve().parent
-TEMPLATES_DIR = PACKAGE_DIR / "templates"
-STATIC_DIR = PACKAGE_DIR / "static"
+
+PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
+TEMPLATES_DIR = os.path.join(PACKAGE_DIR, "templates")
+STATIC_DIR = os.path.join(PACKAGE_DIR, "static")
 
 config = load_config()
 database = Database(config.database)
 repository = ListingRepository(database)
+apartment_valuation_service = ApartmentValuationService()
 
-app = FastAPI(title="UY-JOY Data Dashboard")
+app = FastAPI(title="UY-JOY ML Valuation")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 security = HTTPBasic(auto_error=False)
 
 
 def _require_dashboard_auth(credentials: HTTPBasicCredentials | None = Depends(security)) -> None:
-    """Productionda dashboardni basic auth bilan himoya qiladi."""
-
     username = os.getenv("DASHBOARD_USERNAME", "").strip()
     password = os.getenv("DASHBOARD_PASSWORD", "").strip()
     if not username and not password:
@@ -52,14 +52,6 @@ def _require_dashboard_auth(credentials: HTTPBasicCredentials | None = Depends(s
             detail="Dashboard login yoki parol noto'g'ri",
             headers={"WWW-Authenticate": "Basic"},
         )
-
-
-def _require_looker_export_token(token: str) -> None:
-    """Google Sheets/Looker CSV exportini optional URL token bilan himoya qiladi."""
-
-    expected_token = os.getenv("LOOKER_EXPORT_TOKEN", "").strip()
-    if expected_token and not secrets.compare_digest(token, expected_token):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Looker export token noto'g'ri")
 
 
 def _credentials_match(
@@ -74,508 +66,81 @@ def _credentials_match(
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard(
+@app.get("/new-dashboard", response_class=HTMLResponse)
+def valuation_home(
     request: Request,
     _: None = Depends(_require_dashboard_auth),
-    q: str = "",
-    source: str = "",
-    category: str = "",
-    deal_type: str = "",
-    city: str = "",
-    district: str = "",
-    rooms: str = "",
-    price_min: str = "",
-    price_max: str = "",
-    page: int = Query(default=1, ge=1),
 ) -> HTMLResponse:
-    filters = ListingFilters(
-        q=q.strip(),
-        source=source.strip(),
-        category=category.strip(),
-        deal_type=deal_type.strip(),
-        city=city.strip(),
-        district=district.strip(),
-        rooms=rooms.strip(),
-        price_min=parse_decimal(price_min),
-        price_max=parse_decimal(price_max),
-        page=page,
-    )
-
-    try:
-        result = repository.search(filters)
-        facets = repository.get_facets()
-        stats = repository.get_stats()
-        admin_overview = repository.get_admin_overview()
-        error_message = None
-    except Exception as exc:
-        result = None
-        facets = {"deal_types": [], "sources": [], "categories": [], "cities": [], "districts": [], "rooms": []}
-        stats = {}
-        admin_overview = _empty_admin_overview()
-        error_message = _friendly_error(exc)
-
-    return templates.TemplateResponse(
-        "dashboard.html",
-        {
-            "request": request,
-            "filters": {
-                "q": q,
-                "source": source,
-                "category": category,
-                "deal_type": deal_type,
-                "city": city,
-                "district": district,
-                "rooms": rooms,
-                "price_min": price_min,
-                "price_max": price_max,
-            },
-            "result": result,
-            "facets": facets,
-            "stats": stats,
-            "admin": admin_overview,
-            "error_message": error_message,
-            "prev_url": _page_url(request, page - 1) if result and page > 1 else None,
-            "next_url": _page_url(request, page + 1)
-            if result and page < result.total_pages
-            else None,
-        },
-    )
+    return templates.TemplateResponse("new_dashboard.html", {"request": request})
 
 
-@app.get("/analytics", response_class=HTMLResponse)
-def analytics(
-    request: Request,
+@app.post("/api/apartment-valuation")
+def apartment_valuation_api(
+    payload: dict[str, object] = Body(...),
     _: None = Depends(_require_dashboard_auth),
-    deal_type: str = "",
-    property_type: str = "",
-    city: str = "",
-    district: str = "",
-    rooms: str = "",
-    currency_code: str = "UZS",
-    metric: str = "auto",
-    chart_mode: str = "avg7",
-    days: int = Query(default=60, ge=14, le=180),
-    period_mode: str = "all",
-    date_from: str = "",
-    date_to: str = "",
-    price_min: str = "",
-    price_max: str = "",
-    area_min: str = "",
-    area_max: str = "",
-) -> HTMLResponse:
-    filters = MarketInsightFilters(
-        deal_type=deal_type.strip(),
-        property_type=property_type.strip(),
-        city=city.strip(),
-        district=district.strip(),
-        rooms=rooms.strip(),
-        currency_code="UZS",
-        metric=metric.strip(),
-        chart_mode=chart_mode.strip(),
-        days=days,
-        period_mode=period_mode.strip(),
-        date_from=_parse_optional_date(date_from),
-        date_to=_parse_optional_date(date_to),
-        price_min=parse_decimal(price_min),
-        price_max=parse_decimal(price_max),
-        area_min=parse_decimal(area_min),
-        area_max=parse_decimal(area_max),
-    )
+) -> dict[str, object]:
     try:
-        insights = repository.get_market_insights(filters)
-        error_message = None
-    except Exception as exc:
-        insights = _empty_market_insights()
-        error_message = _friendly_error(exc)
+        valuation_input = parse_apartment_valuation_payload(payload)
+    except ValuationInputError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    return templates.TemplateResponse(
-        "analytics.html",
-        {
-            "request": request,
-            "insights": insights,
-            "filters": filters,
-            "error_message": error_message,
-        },
-    )
-
-
-@app.get("/market-dashboard", response_class=HTMLResponse)
-def market_dashboard(
-    request: Request,
-    _: None = Depends(_require_dashboard_auth),
-    deal_type: str = "",
-    property_type: str = "",
-    city: str = "",
-    district: str = "",
-    rooms: str = "",
-    currency_code: str = "UZS",
-    metric: str = "auto",
-    chart_mode: str = "avg7",
-    days: int = Query(default=60, ge=14, le=180),
-    period_mode: str = "all",
-    date_from: str = "",
-    date_to: str = "",
-    price_min: str = "",
-    price_max: str = "",
-    area_min: str = "",
-    area_max: str = "",
-) -> HTMLResponse:
-    filters = MarketInsightFilters(
-        deal_type=deal_type.strip(),
-        property_type=property_type.strip(),
-        city=city.strip(),
-        district=district.strip(),
-        rooms=rooms.strip(),
-        currency_code="UZS",
-        metric=metric.strip(),
-        chart_mode=chart_mode.strip(),
-        days=days,
-        period_mode=period_mode.strip(),
-        date_from=_parse_optional_date(date_from),
-        date_to=_parse_optional_date(date_to),
-        price_min=parse_decimal(price_min),
-        price_max=parse_decimal(price_max),
-        area_min=parse_decimal(area_min),
-        area_max=parse_decimal(area_max),
-    )
     try:
-        insights = repository.get_market_insights(filters)
-        error_message = None
+        prediction = apartment_valuation_service.predict(valuation_input)
+        market_context = repository.get_apartment_valuation_market_context(
+            valuation_input.district,
+            valuation_input.currency,
+        )
+        return build_apartment_valuation_response(valuation_input, prediction, market_context)
+    except ValuationModelError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        insights = _empty_market_insights()
-        error_message = _friendly_error(exc)
-
-    return templates.TemplateResponse(
-        "market_dashboard.html",
-        {
-            "request": request,
-            "insights": insights,
-            "filters": filters,
-            "error_message": error_message,
-        },
-    )
-
-
-@app.get("/listing/{listing_id}", response_class=HTMLResponse)
-def listing_detail(
-    request: Request,
-    listing_id: int,
-    _: None = Depends(_require_dashboard_auth),
-) -> HTMLResponse:
-    try:
-        listing = repository.get_listing(listing_id)
-    except Exception as exc:
-        raise HTTPException(status_code=503, detail=_friendly_error(exc)) from exc
-
-    if not listing:
-        raise HTTPException(status_code=404, detail="E'lon topilmadi")
-
-    return templates.TemplateResponse(
-        "detail.html",
-        {
-            "request": request,
-            "listing": listing,
-        },
-    )
+        raise HTTPException(status_code=503, detail=f"Database yoki model xatosi: {exc}") from exc
 
 
 @app.get("/health")
 def health() -> dict[str, object]:
-    ping = database.ping()
-    stats = repository.get_stats()
+    try:
+        ping = database.ping()
+        stats = repository.get_stats()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Database health xatosi: {exc}") from exc
+
     return {
         "status": "ok",
         "database": ping["database"],
         "database_host": config.database.host,
         "database_user": ping["user"],
-        "total_listings": stats.get("total_listings", 0),
+        "total_listings": stats["total_listings"],
+        "sale_apartment_listings": stats["sale_apartment_listings"],
+        "model": _model_status(),
     }
 
 
-@app.get("/api/powerbi/listings.csv")
-def powerbi_listings_csv(_: None = Depends(_require_dashboard_auth)) -> StreamingResponse:
-    """Power BI uchun CSV export: Postgres SSL muammosini chetlab o'tadigan endpoint."""
+def _model_status() -> dict[str, object]:
+    if not MODEL_PATH.exists():
+        return {"available": False, "path": str(MODEL_PATH)}
 
-    rows = repository.iter_powerbi_rows()
-    headers = [
-        "id",
-        "source",
-        "source_label",
-        "source_listing_id",
-        "listing_code",
-        "source_url",
-        "title",
-        "category_label",
-        "source_category",
-        "deal_type",
-        "price_value",
-        "currency_code",
-        "is_price_negotiable",
-        "city_name",
-        "district_name",
-        "region_name",
-        "room_count",
-        "total_area",
-        "land_area",
-        "floor",
-        "total_floors",
-        "seller_type",
-        "is_business",
-        "created_time",
-        "last_refresh_time",
-        "last_seen_at",
-    ]
-
-    def generate_csv() -> str:
-        buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
-        writer.writeheader()
-        for row in rows:
-            writer.writerow(row)
-        return buffer.getvalue()
-
-    return StreamingResponse(
-        iter([generate_csv()]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": 'attachment; filename="uyjoy_powerbi_listings.csv"'},
-    )
-
-
-@app.get("/api/looker/listings.csv")
-@app.get("/api/looker/listings_lite.csv")
-def looker_listings_lite_csv(
-    token: str = "",
-    days: int = Query(default=365, ge=14, le=365),
-    limit: int = Query(default=100000, ge=100, le=100000),
-    offset: int = Query(default=0, ge=0),
-    description_limit: int = Query(default=80, ge=80, le=1200),
-) -> StreamingResponse:
-    """Looker Studio / Google Sheets uchun har bir e'lon alohida row bo'lgan CSV."""
-
-    _require_looker_export_token(token)
-    headers = [
-        "id",
-        "source",
-        "source_name",
-        "source_listing_id",
-        "listing_code",
-        "source_url",
-        "source_category",
-        "title",
-        "description",
-        "property_type",
-        "property_type_label",
-        "deal_type",
-        "deal_type_label",
-        "segment_label",
-        "price_display",
-        "price_uzs",
-        "currency_code",
-        "price_value",
-        "is_price_negotiable",
-        "region_name",
-        "city_name",
-        "district_name",
-        "neighborhood",
-        "address",
-        "room_count",
-        "area_m2",
-        "land_sotix",
-        "floor_number",
-        "total_floors",
-        "price_per_m2_uzs",
-        "price_per_sotix_uzs",
-        "seller_type",
-        "is_business",
-        "has_media",
-        "views",
-        "quality_status",
-        "posted_date",
-        "posted_at",
-        "first_seen_at",
-        "last_seen_at",
-        "updated_at",
-    ]
-    return _csv_stream_response(
-        rows=repository.iter_looker_listing_rows(
-            days=days,
-            limit=limit,
-            offset=offset,
-            description_limit=description_limit,
-        ),
-        headers=headers,
-        filename="uyjoy_looker_listings.csv",
-    )
-
-
-@app.get("/api/looker/daily_metrics.csv")
-def looker_daily_metrics_csv(
-    token: str = "",
-    days: int = Query(default=180, ge=14, le=365),
-    level: str = "city",
-    include_rooms: bool = False,
-    include_source: bool = False,
-) -> StreamingResponse:
-    """Looker Studio uchun kunlik agregat metrikalar CSV exporti."""
-
-    _require_looker_export_token(token)
-    headers = [
-        "posted_date",
-        "source",
-        "property_type",
-        "property_type_label",
-        "deal_type",
-        "deal_type_label",
-        "segment_label",
-        "location_level",
-        "location_name",
-        "region_name",
-        "city_name",
-        "district_name",
-        "room_count",
-        "listing_count",
-        "avg_price_uzs",
-        "median_price_uzs",
-        "avg_price_per_m2_uzs",
-        "avg_price_per_sotix_uzs",
-        "avg_area_m2",
-        "avg_land_sotix",
-    ]
-    return _csv_stream_response(
-        rows=repository.iter_looker_daily_metric_rows(
-            days=days,
-            level=level,
-            include_rooms=include_rooms,
-            include_source=include_source,
-        ),
-        headers=headers,
-        filename="uyjoy_looker_daily_metrics.csv",
-    )
-
-
-def _csv_stream_response(
-    *,
-    rows: list[dict[str, object]],
-    headers: list[str],
-    filename: str,
-) -> StreamingResponse:
-    buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=headers, extrasaction="ignore")
-    writer.writeheader()
-    for row in rows:
-        writer.writerow(row)
-    return StreamingResponse(
-        iter([buffer.getvalue()]),
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-def _page_url(request: Request, page: int) -> str:
-    params = dict(request.query_params)
-    params["page"] = str(page)
-    return f"{request.url.path}?{urlencode(params)}"
-
-
-def _friendly_error(exc: Exception) -> str:
-    if is_missing_table_error(exc):
-        return "Database schema hali yaratilmagan. Avval migration ishlating."
-    return f"Databasega ulanish yoki query bajarishda xato: {exc}"
-
-
-def _parse_optional_date(value: str | date | None) -> date | None:
-    """Query stringdagi bo'sh date inputlarni FastAPI 422siz qabul qilish uchun."""
-
-    if isinstance(value, date):
-        return value
-    if not value:
-        return None
+    status_payload: dict[str, object] = {
+        "available": True,
+        "path": str(MODEL_PATH),
+        "size_bytes": MODEL_PATH.stat().st_size,
+        "modified_at": datetime.fromtimestamp(MODEL_PATH.stat().st_mtime).isoformat(timespec="seconds"),
+    }
     try:
-        return date.fromisoformat(value.strip())
-    except ValueError:
-        return None
-
-
-def _empty_admin_overview() -> dict[str, object]:
-    return {
-        "olx": {},
-        "telegram": {},
-        "fetch": {},
-        "daily_flow": [],
-        "sources": [],
-        "cities": [],
-        "quality_reasons": [],
-        "recent_runs": [],
-    }
-
-
-def _empty_market_insights() -> dict[str, object]:
-    return {
-        "filters": MarketInsightFilters(),
-        "facets": {
-            "deal_types": [],
-            "property_types": [],
-            "currencies": [],
-            "cities": [],
-            "districts": [],
-            "rooms": [],
-            "sources": [],
-        },
-        "summary": {},
-        "source_mix": [],
-        "deal_mix": [],
-        "property_mix": [],
-        "top_cities": [],
-        "top_districts": [],
-        "room_mix": [],
-        "area_bands": [],
-        "usd_price_bands": [],
-        "price_summary": [],
-        "regional_summary": [],
-        "price_segment_bars": [],
-        "segment_price_cards": [],
-        "daily_supply": [],
-        "market_comparison": {"segments": []},
-        "price_trend": {
-            "metric_label": "",
-            "currency_code": "",
-            "points": [],
-            "polyline": "",
-            "path": "",
-            "moving_average_polyline": "",
-            "moving_average_path": "",
-            "latest_display": "-",
-            "average_display": "-",
-            "moving_average_latest_display": "-",
-            "average_y": None,
-            "y_min_display": "-",
-            "y_max_display": "-",
-            "y_min_short": "-",
-            "y_max_short": "-",
-            "anomaly_total": 0,
-            "width": 760,
-            "height": 280,
-        },
-        "segment_trends": [],
-        "map": {"points": [], "center_lat": 41.2995, "center_lon": 69.2401, "zoom": 11},
-        "sale_apartment_m2_trend": {
-            "metric_label": "",
-            "currency_code": "",
-            "points": [],
-            "polyline": "",
-            "path": "",
-            "moving_average_polyline": "",
-            "moving_average_path": "",
-            "latest_display": "-",
-            "average_display": "-",
-            "moving_average_latest_display": "-",
-            "average_y": None,
-            "y_min_display": "-",
-            "y_max_display": "-",
-            "y_min_short": "-",
-            "y_max_short": "-",
-            "anomaly_total": 0,
-            "width": 760,
-            "height": 280,
-        },
-    }
+        with MODEL_PATH.open("rb") as file:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning, module="xgboost")
+                payload = pickle.load(file)
+        metadata = payload.get("metadata", {}) if isinstance(payload, dict) else {}
+        training_summary = metadata.get("training_summary", {}) if isinstance(metadata, dict) else {}
+        status_payload.update(
+            {
+                "trained_at": metadata.get("trained_at"),
+                "training_window_days": metadata.get("training_window_days"),
+                "rows_used": training_summary.get("rows_used"),
+                "mape_percent": training_summary.get("mape_percent"),
+            }
+        )
+    except Exception as exc:
+        status_payload.update({"available": False, "error": str(exc)})
+    return status_payload

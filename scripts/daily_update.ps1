@@ -1,20 +1,17 @@
 param(
     [int]$OlxMaxPages = 2,
-    [int]$OlxMaxSources = 250,
-    [int]$OlxMaxVisible = 1000,
-    [switch]$UseOlxDiscovery,
     [int]$TelegramLimit = 200,
     [string[]]$TelegramChannels = @(
         "t.me/uybozorim",
         "t.me/UYBOZORI_TOSHKENT_UY_JOY",
         "t.me/tuhfa_estate"
     ),
-    [string]$CloudDatabaseUrl = "",
-    [int]$CloudOlxUpdatedSinceDays = 1,
     [switch]$SkipOlx,
     [switch]$SkipTelegram,
+    [switch]$SkipModelTrain,
+    [switch]$SkipSiteRestart,
     [switch]$SkipCloudSync,
-    [switch]$SkipSiteRestart
+    [string]$CloudDatabaseUrl = $env:NEON_DATABASE_URL
 )
 
 $ErrorActionPreference = "Stop"
@@ -25,38 +22,6 @@ $logPath = Join-Path $logsDir ("daily-update-{0}.log" -f (Get-Date -Format "yyyy
 
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 Set-Location $root
-
-function Resolve-CloudDatabaseUrl {
-    param(
-        [string]$ExplicitValue,
-        [string]$RootDir
-    )
-
-    if ($ExplicitValue) {
-        return $ExplicitValue
-    }
-
-    if ($env:NEON_DATABASE_URL) {
-        return $env:NEON_DATABASE_URL
-    }
-
-    if ($env:CLOUD_DATABASE_URL) {
-        return $env:CLOUD_DATABASE_URL
-    }
-
-    $envPath = Join-Path $RootDir ".env"
-    if (-not (Test-Path $envPath)) {
-        return ""
-    }
-
-    foreach ($line in Get-Content $envPath) {
-        if ($line -match "^\s*(NEON_DATABASE_URL|CLOUD_DATABASE_URL)\s*=\s*(.+)\s*$") {
-            return $Matches[2].Trim().Trim('"').Trim("'")
-        }
-    }
-
-    return ""
-}
 
 Start-Transcript -Path $logPath -Append | Out-Null
 
@@ -80,18 +45,7 @@ try {
 
     if (-not $SkipOlx) {
         Write-Host "OLX yangi e'lonlari tekshirilmoqda..."
-        if ($UseOlxDiscovery) {
-            # Chuqur scan: source discovery sekinroq, lekin ko'proq segmentlarni tekshiradi.
-            & $python -m uyjoy_etl.cli scrape-discovered `
-                --max-pages $OlxMaxPages `
-                --max-sources $OlxMaxSources `
-                --max-visible $OlxMaxVisible
-        }
-        else {
-            # Daily mode: categorylarning oxirgi sahifalarini tekshiradi.
-            # Yangi e'lonlar odatda shu yerga tushadi, shuning uchun har kungi update uchun tezroq.
-            & $python -m uyjoy_etl.cli scrape --max-pages $OlxMaxPages --no-details
-        }
+        & $python -m uyjoy_etl.cli scrape --max-pages $OlxMaxPages --no-details
     }
 
     if (-not $SkipTelegram) {
@@ -108,20 +62,30 @@ try {
     Write-Host "OLX va Telegram bitta clean jadvalga yig'ilmoqda..."
     & $python -m uyjoy_etl.cli refresh-unified-listings
 
-    $resolvedCloudDatabaseUrl = Resolve-CloudDatabaseUrl -ExplicitValue $CloudDatabaseUrl -RootDir $root
-    if (-not $SkipCloudSync -and $resolvedCloudDatabaseUrl) {
-        Write-Host "Neon/cloud Postgres yangilanmoqda..."
-        & $python -m uyjoy_etl.cli sync-cloud `
-            $resolvedCloudDatabaseUrl `
-            --olx-updated-since-days $CloudOlxUpdatedSinceDays
-    }
-    elseif (-not $SkipCloudSync) {
-        Write-Host "Cloud sync o'tkazib yuborildi: NEON_DATABASE_URL yoki CLOUD_DATABASE_URL topilmadi."
+    if (-not $SkipModelTrain) {
+        Write-Host "Kvartira baholash modeli qayta o'qitilmoqda..."
+        & $python -m uyjoy_etl.cli train-valuation-model --days 30
     }
 
     if (-not $SkipSiteRestart) {
         Write-Host "Lokal site qayta ishga tushirilmoqda..."
         & (Join-Path $PSScriptRoot "restart_site.ps1")
+    }
+
+    Write-Host "Daemon data signature yangilanmoqda..."
+    & $python -m uyjoy_etl.data_signature |
+        Set-Content -LiteralPath (Join-Path $logsDir "uyjoy-data-signature.json") -Encoding UTF8
+
+    if (-not $SkipCloudSync) {
+        if ($CloudDatabaseUrl) {
+            Write-Host "Cloud Neon database sync qilinmoqda..."
+            & (Join-Path $PSScriptRoot "sync_cloud_database.ps1") `
+                -CloudDatabaseUrl $CloudDatabaseUrl `
+                -SkipModelTrain:$SkipModelTrain
+        }
+        else {
+            Write-Host "Cloud sync o'tkazib yuborildi: NEON_DATABASE_URL berilmagan."
+        }
     }
 
     Write-Host "Daily update tugadi: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"

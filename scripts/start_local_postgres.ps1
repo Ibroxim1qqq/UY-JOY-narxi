@@ -44,7 +44,7 @@ for ($i = 1; $i -le 40; $i++) {
         & $psql -h 127.0.0.1 -p $port -U uyjoy -d postgres -c "select 1;" *> $null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "Local Postgres tayyor: 127.0.0.1:$port"
-            exit 0
+            return
         }
     }
     catch {

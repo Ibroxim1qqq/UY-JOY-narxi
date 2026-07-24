@@ -16,7 +16,6 @@ def refresh_unified_listings(database: Database) -> UnifiedRefreshSummary:
     """OLX va Telegram staging jadvallaridan bitta clean warehouse jadvalini yig'adi."""
 
     with database.connect() as conn:
-        conn.execute("truncate table real_estate_listings restart identity")
         conn.execute(_OLX_INSERT_SQL)
         conn.execute(_TELEGRAM_INSERT_SQL)
         row = conn.execute(
@@ -35,6 +34,46 @@ def refresh_unified_listings(database: Database) -> UnifiedRefreshSummary:
         olx_rows=int(row["olx_rows"]),
         telegram_rows=int(row["telegram_rows"]),
     )
+
+
+_REAL_ESTATE_LISTING_UPSERT_SQL = """
+on conflict (source, source_listing_id) do update
+set
+    listing_code = excluded.listing_code,
+    source_url = excluded.source_url,
+    source_name = excluded.source_name,
+    source_category = excluded.source_category,
+    title = excluded.title,
+    description = excluded.description,
+    property_type = excluded.property_type,
+    deal_type = excluded.deal_type,
+    price_display = excluded.price_display,
+    price_value = excluded.price_value,
+    currency_code = excluded.currency_code,
+    is_price_negotiable = excluded.is_price_negotiable,
+    city_name = excluded.city_name,
+    district_name = excluded.district_name,
+    region_name = excluded.region_name,
+    neighborhood = excluded.neighborhood,
+    address = excluded.address,
+    latitude = excluded.latitude,
+    longitude = excluded.longitude,
+    room_count = excluded.room_count,
+    floor_number = excluded.floor_number,
+    total_floors = excluded.total_floors,
+    area_m2 = excluded.area_m2,
+    land_sotix = excluded.land_sotix,
+    seller_type = excluded.seller_type,
+    is_business = excluded.is_business,
+    has_media = excluded.has_media,
+    views = excluded.views,
+    quality_status = excluded.quality_status,
+    quality_reasons = excluded.quality_reasons,
+    posted_at = excluded.posted_at,
+    first_seen_at = excluded.first_seen_at,
+    last_seen_at = excluded.last_seen_at,
+    updated_at = excluded.updated_at;
+"""
 
 
 _OLX_INSERT_SQL = """
@@ -120,8 +159,8 @@ where price_value is not null
           else category_type
       end is distinct from 'apartment'
       or room_count is not null
-  );
-"""
+  )
+""" + _REAL_ESTATE_LISTING_UPSERT_SQL
 
 
 _TELEGRAM_INSERT_SQL = """
@@ -186,5 +225,5 @@ where price_value is not null
   and (
       property_type is distinct from 'apartment'
       or room_count is not null
-  );
-"""
+  )
+""" + _REAL_ESTATE_LISTING_UPSERT_SQL

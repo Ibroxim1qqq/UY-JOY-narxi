@@ -138,8 +138,12 @@ def _database_config_from_env() -> DatabaseConfig:
             connection_url=database_url,
         )
 
+    host = os.getenv("POSTGRES_HOST", "localhost").strip() or "localhost"
+    if host.lower() == "localhost":
+        host = "127.0.0.1"
+
     return DatabaseConfig(
-        host=os.getenv("POSTGRES_HOST", "localhost"),
+        host=host,
         port=int(os.getenv("POSTGRES_PORT", "5432")),
         database=os.getenv("POSTGRES_DB", "uyjoy_olx"),
         user=os.getenv("POSTGRES_USER", "postgres"),

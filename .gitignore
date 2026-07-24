@@ -8,5 +8,4 @@ logs/
 .pytest_cache/
 tools/
 backups/
-infra/cloudflare/config.yml
 secrets/

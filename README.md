@@ -1,159 +1,180 @@
-# UY-JOY Narxlari ETL
+# UY-JOY Core
 
-OLX.uz ko'chmas mulk e'lonlarini bosqichma-bosqich yig'ish uchun ETL loyiha.
+UY-JOY endi bitta toza local pipeline atrofida ishlaydi:
 
-Hozirgi bosqich: **raw extract + Postgres load**.
-
-## Nima qiladi?
-
-- OLX.uz real estate listing sahifalarini ochadi.
-- Sahifa ichidagi `window.__PRERENDERED_STATE__` JSON ma'lumotini ajratib oladi.
-- E'lonning listingdagi va detail sahifadagi raw JSONlarini Postgres `jsonb` ustunlarida saqlaydi.
-- Qidirish oson bo'lishi uchun asosiy maydonlarni alohida ustunlarga ham yozadi.
-- Har bir request, page, e'lon va xato bo'yicha log yozadi.
-
-## Tez Start
-
-Docker bilan eng oson yo'l:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup_docker_and_scrape.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\restart_site.ps1
+```text
+OLX + Telegram -> Postgres -> bi_tashkent_sale_market -> Metabase
+bi_tashkent_sale_market -> 30 kunlik ML model -> ML forma
 ```
 
-Shundan keyin:
+## Start
 
-- Dashboard: `http://127.0.0.1:8000`
-- pgAdmin: `http://127.0.0.1:5050`
-- pgAdmin login: `admin@uyjoy.local` / `admin`
-- Postgres server: `127.0.0.1:55432`
-- Postgres user/password: `uyjoy` / `uyjoy_password`
-
-Docker Desktop WSL sabab ishlamasa, lokal Postgres cluster bilan:
+Hamma kerakli servislarni ko'tarish:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\setup_local_postgres_and_scrape.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_uyjoy.ps1
 ```
 
-Bu loyiha ichida `.postgres-data` papkasida alohida Postgres serverni `127.0.0.1:55432` portda ishga tushiradi.
+Bu script:
 
-Ko'proq data olish uchun:
+- local Postgresni `127.0.0.1:55432` da ishga tushiradi
+- Metabaseni `http://127.0.0.1:3000` da tekshiradi yoki ko'taradi
+- ML formani `http://127.0.0.1:8000` da tekshiradi yoki ko'taradi
+- daily update kerak bo'lsa backgroundda boshlaydi
+
+Doimiy local deploy:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\scrape_priority_sources.ps1
-powershell -ExecutionPolicy Bypass -File .\scripts\scrape_rent_priority_sources.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\deploy_uyjoy.ps1
 ```
 
-Bu scriptlar katta sotuv va ijara source URLlardan 25 sahifagacha olib, `olx_id` bo'yicha duplicate'larni update qiladi.
+Deploy script test, migration, HTTP smoke, startup va daemon restartni bajaradi. Daemon har 5 daqiqada Postgres, Metabase va ML formani tekshiradi. Data o'zgarsa `real_estate_listings` refresh qilinadi, 30 kunlik ML model qayta train bo'ladi va ML forma restart qilinadi.
 
-Har kuni avtomatik yangilash uchun:
+Startupga qo'shish:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\install_daily_update_task.ps1 -At 10:00
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\install_uyjoy_startup.ps1
 ```
 
-Batafsil: `docs/daily-automation.md`.
-
-1. Virtual environment yarating:
+Startupdan olib tashlash:
 
 ```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\uninstall_uyjoy_startup.ps1
 ```
 
-2. Kerakli paketlarni o'rnating:
+## Daily Update
+
+Kunlik data va model update:
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pip install -e .
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\daily_update.ps1
 ```
 
-3. `.env.example` faylidan `.env` yarating va Postgres parolini yozing.
+Pipeline ketma-ketligi:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\create_env_from_example.ps1
+1. Schema va BI viewlarni yangilaydi.
+2. OLX yangi e'lonlarini tortadi.
+3. Telegram postlarini tortadi va clean qiladi.
+4. Shubhali e'lonlarni quality filterdan o'tkazadi.
+5. OLX + Telegram datani `real_estate_listings` jadvaliga yig'adi.
+6. Oxirgi 30 kunlik Toshkent kvartira sotuv data bilan ML modelni train qiladi.
+7. ML formani qayta ishga tushiradi.
+8. `NEON_DATABASE_URL` berilgan bo'lsa, cloud Postgresni ham sync qiladi.
+
+## Metabase
+
+Local Metabase:
+
+```text
+http://127.0.0.1:3000
 ```
 
-Yoki hammasini bitta script bilan tayyorlash:
+Asosiy BI source:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\bootstrap_project.ps1
+```text
+public.bi_tashkent_sale_market
 ```
 
-4. Database schema yarating:
+Runtime joylari:
 
-```powershell
-python -m uyjoy_etl.cli migrate
+```text
+Postgres data: .postgres-data
+Metabase app jar: %LOCALAPPDATA%\UYJOY\metabase\metabase.jar
+Metabase runner: tools\metabase\run-metabase.cmd
+Startup shortcut: shell:startup\UYJOY Core Daemon.lnk
 ```
 
-5. Test scrape:
+## ML Forma
 
-```powershell
-python -m uyjoy_etl.cli scrape --max-pages 1 --limit-categories 1
-```
-
-## pgAdmin Ulanish
-
-Docker Postgres `127.0.0.1:55432` da ishlaydi.
-
-pgAdmin uchun:
-
-- Browser: `http://127.0.0.1:5050`
-- Login: `admin@uyjoy.local`
-- Password: `admin`
-- Server host: `postgres` agar pgAdmin container ichidan ulansa, `127.0.0.1` agar lokal pgAdmin appdan ulansa
-- Server port: `5432` container pgAdmin ichida, `55432` lokal pgAdmin appda
-- Database: `uyjoy_olx`
-- Username: `uyjoy`
-- Password: `uyjoy_password`
-
-`C:\Program Files\PostgreSQL\17\pgAdmin 4\runtime\pgAdmin4.exe` orqali pgAdmin ochiladi.
-
-Migrationdan keyin pgAdmin ichida `Databases > uyjoy_olx` bazasini oching.
-Data ko'rish uchun `sql/useful_queries.sql` faylidagi querylardan foydalaning.
-
-## OLX Limit Haqida
-
-OLX ayrim katta kategoriyalarda ko'rinadigan e'lonlar sonini o'n minglab ko'rsatadi, lekin pagination odatda 25 sahifa / 1000 e'lon atrofida kesiladi.
-Shuning uchun haqiqatan ko'proq data olish uchun keyingi bosqichda category -> region -> city -> district bo'yicha bo'lib scraping qilamiz.
-Hozirgi pipeline raw saqlash va DBga aniq yozish skeletini tayyorlaydi.
-
-## Tekshiruv
-
-Kod va parser testlarini ishga tushirish:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run_checks.ps1
-```
-
-Live OLXdan 1 kategoriya va 1 sahifa test scrape:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run_test_scrape.ps1
-```
-
-OLX source pathdagi region/city/district facetlarini tekshirish:
-
-```powershell
-python -m uyjoy_etl.cli inspect-source nedvizhimost/kvartiry/prodazha
-```
-
-## Lokal Site
-
-Tortilgan datalarni browserda ko'rish:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\run_site.ps1
-```
-
-Keyin oching:
+Local ML valuation form:
 
 ```text
 http://127.0.0.1:8000
 ```
 
-Site `olx_listing_raw` jadvalidan o'qiydi. Search title, description, shahar, tuman, region va link ichidan qidiradi.
+API:
 
-## Muhim Eslatma
+```http
+POST /api/apartment-valuation
+```
 
-Scraper OLX `robots.txt`da yopilgan contact/ajax/account endpointlariga kirmaydi. Telefon raqamni ochish yoki yashirin kontakt endpointlaridan foydalanish bu bosqichga kiritilmagan.
+Payload:
+
+```json
+{
+  "district": "Uchtepa",
+  "rooms": 2,
+  "area_m2": 55,
+  "floor_number": 3,
+  "total_floors": 9,
+  "currency": "UZS"
+}
+```
+
+## Public Deploy
+
+Doimiy public URL uchun repo Render blueprint bilan tayyorlangan:
+
+```text
+render.yaml
+Dockerfile.ml
+Dockerfile.metabase
+```
+
+Cloud database sifatida Render Postgres emas, Neon ishlatiladi. Kerakli env varlar:
+
+```powershell
+$env:NEON_DATABASE_URL='postgresql://.../uyjoy_olx?sslmode=require'
+$env:METABASE_DATABASE_URL='postgresql://.../metabase_app?sslmode=require'
+```
+
+Lokal OLX + Telegram data Neon warehousega ko'chirish. Default holatda free Neon limitiga sig'ishi uchun oxirgi 90 kunlik `real_estate_listings` market data ko'chadi; raw OLX/Telegram jadvallari cloudga tashlanmaydi.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync_cloud_database.ps1
+```
+
+Butun raw datani majburan ko'chirish kerak bo'lsa:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync_cloud_database.ps1 -FullRaw
+```
+
+Lokal Metabase dashboard metadata va `UY-JOY Postgres` connectionni Neon warehousega yo'naltirish:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\sync_cloud_metabase.ps1
+```
+
+Render services:
+
+```text
+uyjoy-ml-form  -> DATABASE_URL = NEON_DATABASE_URL
+uyjoy-metabase -> MB_DB_CONNECTION_URI = METABASE_DATABASE_URL
+```
+
+`daily_update.ps1` har kuni data tortgandan keyin `NEON_DATABASE_URL` mavjud bo'lsa cloud datani ham yangilaydi.
+
+## CLI
+
+Core komandalar:
+
+```powershell
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli migrate
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli ping-db
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli telegram-login
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli scrape --max-pages 2 --no-details
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli scrape-telegram t.me/uybozorim --limit 200
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli clean-telegram-real-estate
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli mark-suspicious
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli refresh-unified-listings
+.\.venv\Scripts\python.exe -m uyjoy_etl.cli train-valuation-model --days 30
+```
+
+## Tests
+
+```powershell
+$env:PYTHONPATH='src'
+$env:PYTHONIOENCODING='utf-8'
+.\.venv\Scripts\python.exe -m unittest discover -s tests
+```

@@ -1,0 +1,6 @@
+FROM metabase/metabase:latest
+
+ENV MB_JETTY_PORT=10000
+ENV JAVA_TOOL_OPTIONS="-Xmx430m"
+
+EXPOSE 10000

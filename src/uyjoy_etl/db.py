@@ -21,10 +21,10 @@ class Database:
         self._config = config
 
     def connect(self) -> psycopg.Connection:
-        return psycopg.connect(self._config.dsn, row_factory=dict_row)
+        return psycopg.connect(self._config.dsn, connect_timeout=8, row_factory=dict_row)
 
     def connect_admin(self) -> psycopg.Connection:
-        return psycopg.connect(self._config.admin_dsn, autocommit=True, row_factory=dict_row)
+        return psycopg.connect(self._config.admin_dsn, autocommit=True, connect_timeout=8, row_factory=dict_row)
 
     def ensure_database_exists(self) -> None:
         """`POSTGRES_DB` mavjud bo'lmasa yaratadi."""
@@ -143,8 +143,7 @@ class Database:
                     district_name, region_name, location_path, latitude, longitude,
                     seller_id, seller_name, seller_type, is_business, contact_phone,
                     phone_number,
-                    contact_name, contact_source, contact_raw, contact_imported_at,
-                    contact_updated_at, created_time,
+                    contact_name, contact_source, contact_raw, contact_updated_at, created_time,
                     last_refresh_time, pushup_time, valid_to_time, is_active,
                     status, raw_params, param_values, raw_photos, raw_listing,
                     raw_detail, content_hash, detail_fetched_at
@@ -159,7 +158,6 @@ class Database:
                     %(contact_phone)s,
                     case when %(contact_phone)s = 'True' then null else %(contact_phone)s end,
                     %(contact_name)s, %(contact_source)s, %(contact_raw)s,
-                    case when %(has_contact)s and %(contact_phone)s <> 'True' then now() else null end,
                     case when %(has_contact)s and %(contact_phone)s <> 'True' then now() else null end,
                     %(created_time)s, %(last_refresh_time)s, %(pushup_time)s,
                     %(valid_to_time)s, %(is_active)s, %(status)s, %(raw_params)s,
@@ -206,10 +204,6 @@ class Database:
                         when excluded.contact_phone is not null and excluded.contact_phone <> 'True' then excluded.contact_raw
                         else olx_listing_raw.contact_raw
                     end,
-                    contact_imported_at = case
-                        when excluded.contact_phone is not null and excluded.contact_phone <> 'True' then coalesce(olx_listing_raw.contact_imported_at, now())
-                        else olx_listing_raw.contact_imported_at
-                    end,
                     contact_updated_at = case
                         when excluded.contact_phone is not null and excluded.contact_phone <> 'True' then now()
                         else olx_listing_raw.contact_updated_at
@@ -249,49 +243,6 @@ class Database:
         action = row["action"]
         logger.info("Listing saqlandi | action=%s | olx_id=%s", action, record["olx_id"])
         return action
-
-    def update_listing_contact(self, record: dict[str, Any]) -> bool:
-        """Ruxsatli export/feed orqali kelgan contactni mavjud e'lon rowiga biriktiradi."""
-
-        if record.get("olx_id"):
-            where_sql = "olx_id = %(olx_id)s"
-        elif record.get("listing_url"):
-            where_sql = "listing_url = %(listing_url)s"
-        else:
-            raise ValueError("Contact import uchun olx_id yoki listing_url kerak")
-
-        with self.connect() as conn:
-            row = conn.execute(
-                f"""
-                update olx_listing_raw
-                set contact_phone = %(contact_phone)s,
-                    phone_number = %(contact_phone)s,
-                    contact_name = coalesce(%(contact_name)s, contact_name),
-                    contact_source = %(contact_source)s,
-                    contact_raw = %(contact_raw)s,
-                    contact_imported_at = coalesce(contact_imported_at, now()),
-                    contact_updated_at = now(),
-                    updated_at = now()
-                where {where_sql}
-                returning olx_id
-                """,
-                {
-                    **record,
-                    "contact_raw": Jsonb(record.get("contact_raw") or {}),
-                },
-            ).fetchone()
-            conn.commit()
-
-        return row is not None
-
-    def get_listings_without_phone(self, limit: int | None = None) -> list[int]:
-        """Telefon raqami yo'q bo'lgan e'lonlarning OLX ID ro'yxatini oladi."""
-        limit_sql = f"limit {limit}" if limit is not None else ""
-        with self.connect() as conn:
-            rows = conn.execute(
-                f"select olx_id from olx_listing_raw where phone_number is null order by last_seen_at desc {limit_sql}"
-            ).fetchall()
-        return [row["olx_id"] for row in rows]
 
     def ping(self) -> dict[str, Any]:
         with self.connect() as conn:

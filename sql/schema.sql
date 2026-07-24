@@ -1,6 +1,9 @@
 create extension if not exists pgcrypto;
 create extension if not exists pg_trgm;
 
+drop view if exists public.looker_listings cascade;
+drop view if exists public.segment_rooms cascade;
+
 create table if not exists etl_runs (
     id uuid primary key default gen_random_uuid(),
     source text not null,
@@ -58,7 +61,6 @@ create table if not exists olx_listing_raw (
     contact_name text,
     contact_source text,
     contact_raw jsonb not null default '{}'::jsonb,
-    contact_imported_at timestamptz,
     contact_updated_at timestamptz,
 
     created_time timestamptz,
@@ -92,7 +94,7 @@ alter table olx_listing_raw add column if not exists contact_phone text;
 alter table olx_listing_raw add column if not exists contact_name text;
 alter table olx_listing_raw add column if not exists contact_source text;
 alter table olx_listing_raw add column if not exists contact_raw jsonb not null default '{}'::jsonb;
-alter table olx_listing_raw add column if not exists contact_imported_at timestamptz;
+alter table olx_listing_raw drop column if exists contact_imported_at;
 alter table olx_listing_raw add column if not exists contact_updated_at timestamptz;
 alter table olx_listing_raw add column if not exists quality_status text not null default 'ok';
 alter table olx_listing_raw add column if not exists quality_reasons jsonb not null default '[]'::jsonb;

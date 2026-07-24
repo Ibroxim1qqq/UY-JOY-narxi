@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Uy Narxini Baholash | UY-JOY</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%231769e8'/%3E%3Cpath d='M14 34 32 18l18 16v18H38V39H26v13H14z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', path='new_dashboard.css') }}?v=20260723-valuation-only1">
+</head>
+<body class="valuation-body">
+  <main class="valuation-shell" data-valuation-page data-valuation-api-url="/api/apartment-valuation">
+    <section class="valuation-tool" id="valuation">
+      <div class="valuation-header">
+        <p>UY-JOY ML</p>
+        <h1>Uy narxini baholash</h1>
+        <span>Oxirgi 30 kunlik Toshkent kvartira sotuv modeli</span>
+      </div>
+
+      <form class="valuation-form" id="valuationForm">
+        <label class="field field-wide">
+          <span>Tuman</span>
+          <select id="valuationDistrict" name="district" required></select>
+        </label>
+
+        <label class="field">
+          <span>Xona</span>
+          <input id="valuationRooms" name="rooms" type="number" min="1" max="10" step="1" value="2" required>
+        </label>
+
+        <label class="field">
+          <span>Maydon m2</span>
+          <input id="valuationArea" name="area_m2" type="number" min="12" max="500" step="0.1" value="60" required>
+        </label>
+
+        <label class="field">
+          <span>Qavat</span>
+          <input id="valuationFloor" name="floor_number" type="number" min="1" max="50" step="1" value="3" required>
+        </label>
+
+        <label class="field">
+          <span>Jami qavat</span>
+          <input id="valuationTotalFloors" name="total_floors" type="number" min="1" max="50" step="1" value="9" required>
+        </label>
+
+        <label class="field">
+          <span>Valyuta</span>
+          <select id="valuationCurrency" name="currency">
+            <option value="UZS">UZS</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
+
+        <button class="valuation-submit" id="valuationSubmit" type="submit">Narxni hisoblash</button>
+      </form>
+
+      <div class="valuation-error" id="valuationError" hidden></div>
+
+      <section class="valuation-result" id="valuationResult" hidden>
+        <div>
+          <span>Bashorat narxi</span>
+          <strong id="valuationPrice">-</strong>
+        </div>
+        <div>
+          <span>1 m2 narxi</span>
+          <strong id="valuationUnitPrice">-</strong>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', path='new_dashboard.js') }}?v=20260723-valuation-only1" defer></script>
+</body>
+</html>
